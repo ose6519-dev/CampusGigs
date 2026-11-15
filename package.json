@@ -1,0 +1,13 @@
+{
+  "name": "campusgigs",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": ["apps/api", "apps/web"],
+  "scripts": {
+    "build": "npm run build -w @campusgigs/web && npm run build -w @campusgigs/api",
+    "check": "npm run check -w @campusgigs/web && npm run check -w @campusgigs/api",
+    "dev:web": "npm run dev -w @campusgigs/web",
+    "dev:api": "npm run dev -w @campusgigs/api"
+  }
+}
