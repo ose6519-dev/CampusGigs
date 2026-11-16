@@ -9,9 +9,9 @@ export const gigCategories = [
 export const naira = (kobo: number) => `₦${new Intl.NumberFormat('en-NG', { maximumFractionDigits: 0 }).format(kobo / 100)}`;
 
 function serviceIcon(category: string) {
-  return ({ 'Design & Creative': '✳', 'Tech & Digital': '⌘', 'Media & Editing': '◈',
+  return ({ 'Design & Creative': '✦', 'Tech & Digital': '⌘', 'Media & Editing': '◈',
     'Personal Services': '☼', 'Tutoring & Skills': '✦', 'Typing & Proofreading': '▧',
-    'Events & Lifestyle': '◎', 'Business Support': '↗' } as Record<string, string>)[category] || '✷';
+    'Events & Lifestyle': '◎', 'Business Support': '↗' } as Record<string, string>)[category] || '✦';
 }
 
 export function GigCard({ gig, onOpen }: { gig: PublicGig; onOpen: (id: string) => void }) {
@@ -41,7 +41,7 @@ export function FeaturedGigs({ onOpen, onBrowse }: { onOpen: (id: string) => voi
     return () => controller.abort();
   }, []);
   return <section className="section-wrap home-featured"><div className="section-heading"><div><span className="eyebrow">FRESH FROM THE COMMUNITY</span><h2>Discover real <i>talent.</i></h2></div><button className="text-link" onClick={onBrowse}>Browse all gigs ↗</button></div>
-    {gigs.length ? <div className="discovery-grid">{gigs.map((gig) => <GigCard gig={gig} key={gig.id} onOpen={onOpen} />)}</div> : <div className="home-featured-empty"><span>✳</span><div><strong>{loading ? 'Finding great skills…' : 'New gigs are on their way.'}</strong><p>Explore skill categories while our verified providers prepare their services.</p></div><button className="button button-dark" onClick={onBrowse}>Explore gigs ↗</button></div>}
+    {gigs.length ? <div className="discovery-grid">{gigs.map((gig) => <GigCard gig={gig} key={gig.id} onOpen={onOpen} />)}</div> : <div className="home-featured-empty"><span>✦</span><div><strong>{loading ? 'Finding great skills…' : 'New gigs are on their way.'}</strong><p>Explore skill categories while our verified providers prepare their services.</p></div><button className="button button-dark" onClick={onBrowse}>Explore gigs ↗</button></div>}
   </section>;
 }
 
@@ -109,7 +109,7 @@ export function BrowseGigs({ initialCategory, onOpen }: { initialCategory: strin
   function submit(event: FormEvent) { event.preventDefault(); setFilters((old) => ({ ...old, q: query, location: locationText })); }
 
   return <section className="section-wrap discover-page page-section">
-    <div className="discover-heading"><div><span className="eyebrow">THE CAMPUSGIGS MARKETPLACE</span><h1 className="page-title">Find your <em>people.</em></h1><p>Real skills. Verified providers. Find a service that fits.</p></div><div className="discover-mark" aria-hidden="true">✳</div></div>
+    <div className="discover-heading"><div><span className="eyebrow">THE CAMPUSGIGS MARKETPLACE</span><h1 className="page-title">Find your <em>people.</em></h1><p>Real skills. Verified providers. Find a service that fits.</p></div><div className="discover-mark" aria-hidden="true">✦</div></div>
     <form className="discover-search" onSubmit={submit} role="search">
       <label className="discovery-search-main"><span aria-hidden="true">⌕</span><input type="search" value={query} maxLength={80} onChange={(event) => setQuery(event.target.value)} placeholder="What service do you need?" aria-label="Search gigs" /></label>
       <label className="discovery-location"><span aria-hidden="true">◎</span><input value={locationText} onChange={(event) => setLocationText(event.target.value)} placeholder="Campus or city" maxLength={100} aria-label="Search campus or city" /></label>
@@ -123,7 +123,7 @@ export function BrowseGigs({ initialCategory, onOpen }: { initialCategory: strin
       <label>Max ₦<input aria-label="Maximum price in naira" type="number" min="0" max="10000000" placeholder="Any" value={filters.maxPrice} onChange={(event) => setFilter('maxPrice', event.target.value)} /></label>
       <button className="discover-reset" onClick={clear}>Clear filters</button></div></div>
     {error && <div className="discover-error" role="alert">{error}<button onClick={() => setVersion((n) => n + 1)}>Retry</button></div>}
-    {loading ? <div className="discovery-grid" aria-label="Loading services">{Array.from({ length: 6 }, (_, i) => <div className="discovery-skeleton" key={i}><span /><span /><span /></div>)}</div> : gigs.length ? <><div className="discovery-grid">{gigs.map((gig) => <GigCard key={gig.id} gig={gig} onOpen={onOpen} />)}</div>{offset !== null && <div className="more-row"><button className="button button-ghost" onClick={() => void loadMore()} disabled={moreLoading}>{moreLoading ? 'Loading…' : 'Load more services'} <span>↓</span></button></div>}</> : !error && <div className="discover-empty"><div className="discover-empty-icon">✳</div><h2>No gigs found yet.</h2><p>{filters.category || filters.q || filters.location || filters.locationType || filters.minPrice || filters.maxPrice ? 'Try clearing your filters or exploring another skill.' : 'Verified providers are getting ready. Check back as services are published.'}</p><button className="button button-dark" onClick={clear}>View all skills <span>↗</span></button></div>}
+    {loading ? <div className="discovery-grid" aria-label="Loading services">{Array.from({ length: 6 }, (_, i) => <div className="discovery-skeleton" key={i}><span /><span /><span /></div>)}</div> : gigs.length ? <><div className="discovery-grid">{gigs.map((gig) => <GigCard key={gig.id} gig={gig} onOpen={onOpen} />)}</div>{offset !== null && <div className="more-row"><button className="button button-ghost" onClick={() => void loadMore()} disabled={moreLoading}>{moreLoading ? 'Loading…' : 'Load more services'} <span>↓</span></button></div>}</> : !error && <div className="discover-empty"><div className="discover-empty-icon">✦</div><h2>No gigs found yet.</h2><p>{filters.category || filters.q || filters.location || filters.locationType || filters.minPrice || filters.maxPrice ? 'Try clearing your filters or exploring another skill.' : 'Verified providers are getting ready. Check back as services are published.'}</p><button className="button button-dark" onClick={clear}>View all skills <span>↗</span></button></div>}
     <div className="discovery-footnote">Service browsing is open. Booking and payments will be added in the next phase.</div>
   </section>;
 }

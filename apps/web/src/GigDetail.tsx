@@ -37,7 +37,7 @@ export function GigDetail({ gigId, onBack, onOpen, onNotice }: {
     {data && <>
       <div className="detail-layout"><div className="detail-main">
         <div className="detail-image-stage">
-          {data.images.length ? <img src={gigImageUrl(gigId, data.images[activeImage] || data.images[0])} alt={`${data.gig.title} sample ${activeImage + 1}`} /> : <div className="detail-no-image"><span>✳</span><strong>Skill speaks.</strong><small>CAMPUSGIGS</small></div>}
+          {data.images.length ? <img src={gigImageUrl(gigId, data.images[activeImage] || data.images[0])} alt={`${data.gig.title} sample ${activeImage + 1}`} /> : <div className="detail-no-image"><span>✦</span><strong>Skill speaks.</strong><small>CAMPUSGIGS</small></div>}
           <span className="detail-stage-tag">{data.gig.category}</span>
         </div>
         {data.images.length > 1 && <div className="detail-thumbnails" aria-label="Gig gallery">{data.images.map((id, index) => <button key={id} onClick={() => setActiveImage(index)} className={activeImage === index ? 'active' : ''} aria-label={`Show image ${index + 1}`}><img src={gigImageUrl(gigId, id)} alt="" loading="lazy" /></button>)}</div>}
