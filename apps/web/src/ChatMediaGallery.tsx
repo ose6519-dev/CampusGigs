@@ -29,6 +29,7 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
   const pictureRef=useRef<HTMLImageElement|null>(null);
   const cropRef=useRef(false);
   const [saving,setSaving]=useState(false);
+  const [downloadError,setDownloadError]=useState('');
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const drawing=useRef(false);
   const touchX=useRef(0);
@@ -131,7 +132,7 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
   }
   async function download(){
     if(!url||saving||!current)return;
-    setSaving(true);
+    setSaving(true);setDownloadError('');
     try{
       let target=url;let temporary='';
       if(editing&&current.kind==='image'&&canvasRef.current){
@@ -144,7 +145,8 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
       link.download=editing&&current.kind==='image'?filename.replace(/\.[^.]+$/,'')+'-edited.png':filename;
       document.body.appendChild(link);link.click();link.remove();
       if(temporary)setTimeout(()=>URL.revokeObjectURL(temporary),5000);
-    }finally{setSaving(false);}
+    }catch{setDownloadError('Unable to save this photo. Please try again.');}
+    finally{setSaving(false);}
   }
   if(!current)return null;
   return <div className="cg-q-gallery" role="dialog" aria-modal="true" aria-label="Shared media gallery">
@@ -181,7 +183,7 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
       <div className="cg-r-tools-row cg-r-tools-actions">
         <button type="button" onClick={undoMark}>↶ Undo</button>
         <button type="button" onClick={clearMarks}>✕ Clear</button>
-        <button type="button" className="cg-r-edit-done" onClick={()=>{setMarker('');setEditing(false);}}>✓ Done</button>
+        <button type="button" className="cg-r-edit-done" onClick={()=>setMarker('')}>✓ Finish marking</button>
       </div>
     </div>}
     <div className="cg-q-gallery-filmstrip" aria-label="Attachments in conversation">{items.map((item,i)=>
@@ -193,6 +195,7 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
       <button onClick={()=>{onReply(current.id);onClose();}}>↪ <span>Reply</span></button>
       <button onClick={()=>{onActions(current.id);onClose();}}>♡ <span>React</span></button>
     </footer>
-    {editing&&<p className="cg-q-gallery-hint">Mark directly on the photo. Download saves a copy; the original stays unchanged.</p>}
+    {downloadError&&<p className="cg-q-gallery-hint" role="alert">{downloadError}</p>}
+    {editing&&<p className="cg-q-gallery-hint">Draw on the image, then use Download to save your edits. The original stays unchanged.</p>}
   </div>;
 }
