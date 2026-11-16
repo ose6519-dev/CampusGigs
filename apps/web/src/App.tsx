@@ -13,8 +13,20 @@ import {
 import { apiRequest, type MeResponse, type ProviderStatus } from './api';
 import { firebaseAuth, firebaseReady, googleProvider } from './firebase';
 import { ProviderWorkspace } from './ProviderWorkspace';
+import { BrowseGigs, FeaturedGigs } from './BrowseGigs';
+import { GigDetail } from './GigDetail';
 
-type View = 'explore' | 'categories' | 'provider' | 'profile';
+type View = 'explore' | 'categories' | 'detail' | 'provider' | 'profile';
+
+function routeFromLocation(): { view: View; gigId: string; category: string } {
+  const path = window.location.pathname;
+  const gigId = path.match(/^\/gigs\/([0-9a-f-]{36})\/?$/i)?.[1] || '';
+  if (gigId) return { view: 'detail', gigId, category: '' };
+  if (path === '/gigs' || path === '/gigs/') return { view: 'categories', gigId: '', category: new URLSearchParams(window.location.search).get('category') || '' };
+  if (path === '/provide') return { view: 'provider', gigId: '', category: '' };
+  if (path === '/profile') return { view: 'profile', gigId: '', category: '' };
+  return { view: 'explore', gigId: '', category: '' };
+}
 
 const categories = [
   { icon: '✎', name: 'Design & Creative', tag: 'Graphics, brand identity', tone: 'pink' },
@@ -32,7 +44,9 @@ function Icon({ children }: { children: ReactNode }) {
 }
 
 function App() {
-  const [view, setView] = useState<View>('explore');
+  const [route, setRoute] = useState(routeFromLocation);
+  const [browseVersion, setBrowseVersion] = useState(0);
+  const { view } = route;
   const [user, setUser] = useState<User | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
   const [providerVerified, setProviderVerified] = useState(false);
@@ -87,6 +101,12 @@ function App() {
   }, [notice]);
 
   useEffect(() => {
+    const onPopState = () => { setRoute(routeFromLocation()); setBrowseVersion((n) => n + 1); };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
     if (!authOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -101,8 +121,24 @@ function App() {
   }, [authOpen]);
 
   function goTo(next: View) {
-    setView(next);
+    const path = ({ explore: '/', categories: '/gigs', provider: '/provide', profile: '/profile', detail: '/' } as Record<View, string>)[next];
+    window.history.pushState(null, '', path);
+    setRoute({ view: next, gigId: '', category: '' });
+    if (next === 'categories') setBrowseVersion((n) => n + 1);
     if ((next === 'profile' || next === 'provider') && !user) setAuthOpen(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function goToCategory(category: string) {
+    window.history.pushState(null, '', `/gigs?category=${encodeURIComponent(category)}`);
+    setRoute({ view: 'categories', gigId: '', category });
+    setBrowseVersion((n) => n + 1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function openGig(gigId: string) {
+    window.history.pushState(null, '', `/gigs/${gigId}`);
+    setRoute({ view: 'detail', gigId, category: '' });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -161,7 +197,7 @@ function App() {
     try {
       await apiRequest(user, '/v1/me/mode', { method: 'PATCH', body: JSON.stringify({ mode: next }) });
       await refreshProfile(user);
-      if (next === 'providing') setView('provider');
+      if (next === 'providing') goTo('provider');
       setNotice(next === 'providing' ? 'Providing mode selected. Open your provider studio.' : 'Buying mode selected.');
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not switch mode'); }
   }
@@ -176,7 +212,7 @@ function App() {
           </button>
           <nav className="desktop-nav" aria-label="Main navigation">
             <button className={view === 'explore' ? 'selected' : ''} onClick={() => goTo('explore')}>Explore</button>
-            <button className={view === 'categories' ? 'selected' : ''} onClick={() => goTo('categories')}>Categories</button>
+            <button className={view === 'categories' || view === 'detail' ? 'selected' : ''} onClick={() => goTo('categories')}>Find services</button>
             <button className={view === 'provider' ? 'selected' : ''} onClick={() => goTo('provider')}>Become a provider</button>
             <a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer">Explore CampSell <span>↗</span></a>
           </nav>
@@ -213,13 +249,16 @@ function App() {
           <div className="value-ribbon"><span>STUDENTS</span><span className="ribbon-star">✦</span><span>CREATORS</span><span className="ribbon-star">✦</span><span>EVERYDAY EXPERTS</span><span className="ribbon-star">✦</span><span>EVERYWHERE IN NIGERIA</span></div>
           <section className="section-wrap feature-section">
             <div className="section-heading"><div><span className="eyebrow">DISCOVER WHAT'S POSSIBLE</span><h2>Find your kind of <i>expert.</i></h2></div><button className="text-link" onClick={() => goTo('categories')}>All categories <span>↗</span></button></div>
-            <div className="category-grid">{categories.slice(0, 6).map((category) => <CategoryCard key={category.name} category={category} onClick={() => goTo('categories')} />)}</div>
-            <p className="phase-note">Providers can now apply and publish services. Full service discovery opens in Phase C.</p>
+            <div className="category-grid">{categories.slice(0, 6).map((category) => <CategoryCard key={category.name} category={category} onClick={() => goToCategory(category.name)} />)}</div>
+            <p className="phase-note">Browse verified services, find the right person and see their work.</p>
           </section>
+          <FeaturedGigs onOpen={openGig} onBrowse={() => goTo('categories')} />
           <section className="section-wrap connect-panel"><div><span className="eyebrow">TWO WORLDS. ONE COMMUNITY.</span><h2>Looking for products<br />instead of services?</h2><p>CampusGigs is for skills and services. Shop physical goods on CampSell.</p></div><a className="button button-gold" href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer">Explore CampSell <span>↗</span></a></section>
         </>}
 
-        {view === 'categories' && <section className="section-wrap page-section"><span className="eyebrow">EXPLORE SKILLS</span><h1 className="page-title">What do you <em>need done?</em></h1><p className="page-lead">Find the right category, then discover your people.</p><div className="category-grid all-categories">{categories.map((category) => <CategoryCard key={category.name} category={category} onClick={() => setNotice('Gig discovery and booking open in later phases.')} />)}</div><div className="friendly-notice">Providers can publish now. Bookings and payments are not active yet.</div></section>}
+        {view === 'categories' && <BrowseGigs key={browseVersion} initialCategory={route.category} onOpen={openGig} />}
+
+        {view === 'detail' && <GigDetail gigId={route.gigId} onBack={() => goTo('categories')} onOpen={openGig} onNotice={setNotice} />}
 
         {view === 'provider' && <ProviderWorkspace user={user} location={me?.profile.campus || me?.profile.city || ''} notice={setNotice} onLogin={() => setAuthOpen(true)} onApproved={setProviderVerified}/>}
 
@@ -227,7 +266,7 @@ function App() {
       </main>
 
       <footer className="site-footer"><div className="section-wrap footer-content"><span className="footer-brand">Campus<span>Gigs.</span></span><p>Built for talent. Made for Nigeria.</p><div><a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer">CampSell ↗</a><span>© {new Date().getFullYear()} CampusGigs</span></div></div></footer>
-      <nav className="mobile-nav" aria-label="Mobile navigation"><button className={view === 'explore' ? 'active' : ''} aria-current={view === 'explore' ? 'page' : undefined} onClick={() => goTo('explore')}><Icon>⌂</Icon><small>Explore</small></button><button className={view === 'categories' ? 'active' : ''} aria-current={view === 'categories' ? 'page' : undefined} onClick={() => goTo('categories')}><Icon>▦</Icon><small>Skills</small></button><button className={view === 'provider' ? 'active' : ''} aria-current={view === 'provider' ? 'page' : undefined} onClick={() => goTo('provider')}><Icon>✳</Icon><small>Provide</small></button><button className={view === 'profile' ? 'active' : ''} aria-current={view === 'profile' ? 'page' : undefined} onClick={() => goTo('profile')}><Icon>◉</Icon><small>Profile</small></button><a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer" aria-label="Shop products on CampSell"><Icon>↗</Icon><small>CampSell</small></a></nav>
+      <nav className="mobile-nav" aria-label="Mobile navigation"><button className={view === 'explore' ? 'active' : ''} aria-current={view === 'explore' ? 'page' : undefined} onClick={() => goTo('explore')}><Icon>⌂</Icon><small>Explore</small></button><button className={view === 'categories' || view === 'detail' ? 'active' : ''} aria-current={view === 'categories' || view === 'detail' ? 'page' : undefined} onClick={() => goTo('categories')}><Icon>⌕</Icon><small>Gigs</small></button><button className={view === 'provider' ? 'active' : ''} aria-current={view === 'provider' ? 'page' : undefined} onClick={() => goTo('provider')}><Icon>✳</Icon><small>Provide</small></button><button className={view === 'profile' ? 'active' : ''} aria-current={view === 'profile' ? 'page' : undefined} onClick={() => goTo('profile')}><Icon>◉</Icon><small>Profile</small></button><a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer" aria-label="Shop products on CampSell"><Icon>↗</Icon><small>CampSell</small></a></nav>
 
       {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss">×</button></div>}
       {authOpen && <div className="modal-layer" onMouseDown={(event) => { if (event.target === event.currentTarget) setAuthOpen(false); }}><div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className="modal-close" onClick={() => setAuthOpen(false)} aria-label="Close">×</button><div className="modal-logo">CG</div><span className="eyebrow">HELLO, CAMPUSGIGS!</span><h2 id="auth-title">{registering ? 'Create your account' : 'Welcome back.'}</h2><p>One account for CampSell and CampusGigs.</p>{!firebaseReady && <div className="auth-warning">Firebase configuration is still required before sign-in can work.</div>}<button className="google-btn" onClick={() => void googleLogin()} disabled={loading || !firebaseReady}><span>G</span> Continue with Google</button><div className="auth-divider"><span>OR USE EMAIL</span></div><form onSubmit={emailLogin}><label>Email address<input type="email" required autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="you@example.com" /></label><label>Password<input type="password" required minLength={6} autoComplete={registering ? 'new-password' : 'current-password'} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="At least 6 characters" /></label><button className="button button-dark auth-submit" type="submit" disabled={loading || !firebaseReady}>{loading ? 'Please wait…' : registering ? 'Create account' : 'Sign in'} <span>→</span></button></form><p className="auth-switch">{registering ? 'Already have an account?' : 'New around here?'} <button onClick={() => setRegistering(!registering)}>{registering ? 'Sign in' : 'Create account'}</button></p></div></div>}

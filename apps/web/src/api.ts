@@ -25,8 +25,24 @@ export type Gig = { id: string; title: string; description: string; category: st
   location_name: string; location_type: string; payment_option: string; status: string; cover_image_id: string | null; image_count: number; created_at: string };
 export type ProviderGigs = { gigs: Gig[] };
 
+export type PublicGig = Pick<Gig, 'id' | 'title' | 'description' | 'category' | 'price_kobo' | 'delivery_days' | 'location_name' | 'location_type' | 'payment_option' | 'cover_image_id' | 'created_at'> & {
+  provider_name: string; provider_campus?: string; verified_at: string;
+};
+export type PublicGigPage = { gigs: PublicGig[]; nextOffset: number | null; paymentsEnabled: false };
+export type PublicGigDetail = { gig: PublicGig & {
+  provider_avatar: string; provider_bio: string; provider_city: string; provider_campus: string;
+}; images: string[]; related: PublicGig[]; paymentsEnabled: false };
+
 const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 export const gigImageUrl = (gigId: string, imageId: string) => `${baseUrl}/v1/public/gigs/${gigId}/images/${imageId}`;
+
+export async function publicRequest<T>(path: string, signal?: AbortSignal): Promise<T> {
+  if (!baseUrl) throw new Error('CampusGigs API is not configured');
+  const response = await fetch(`${baseUrl}${path}`, { signal, headers: { Accept: 'application/json' } });
+  const data = await response.json() as T & { error?: string };
+  if (!response.ok) throw new Error(data.error || 'Could not load gigs. Try again.');
+  return data;
+}
 
 export async function apiRequest<T>(user: User, path: string, init?: RequestInit): Promise<T> {
   if (!baseUrl) throw new Error('CampusGigs API has not been configured');

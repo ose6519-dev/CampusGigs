@@ -77,7 +77,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   const requestUrl = new URL(request.url);
   const path = requestUrl.pathname;
   if (path === '/health' && request.method === 'GET') {
-    return json({ service: 'campusgigs-api', status: 'ok', phase: 'B', paymentsEnabled: false });
+    return json({ service: 'campusgigs-api', status: 'ok', phase: 'C', paymentsEnabled: false });
   }
   if (!path.startsWith('/v1/')) return json({ error: 'Not found' }, 404);
   if (!['GET', 'POST', 'PATCH'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);

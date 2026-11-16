@@ -1,6 +1,7 @@
 import type { VerifiedUser } from './auth';
 import { InputError } from './validation';
 import { parseGig, parseModeration, parseProviderApplication, parseReview } from './providerValidation';
+import { parsePublicGigFilters, publicGigQuery, publicGigWhere } from './publicGigs';
 
 type JsonHandler = (data: unknown, status?: number) => Response;
 type Context = {
@@ -103,15 +104,44 @@ export async function phaseB(context: Context): Promise<Response | null> {
 
   // Public listings do not expose private applicant IDs, email addresses or drafts.
   if (path === '/v1/public/gigs' && request.method === 'GET') {
+    const filters = parsePublicGigFilters(url);
+    const query = publicGigQuery(filters);
     const data = await env.DB.prepare(`
-      SELECT ${publicGigFields}, p.display_name AS provider_name, pp.verified_at,
+      SELECT ${publicGigFields}, p.display_name AS provider_name, pp.verified_at, p.campus AS provider_campus,
         (SELECT id FROM gig_images WHERE gig_id = g.id ORDER BY created_at LIMIT 1) AS cover_image_id
       FROM gigs g JOIN provider_profiles pp ON pp.firebase_uid = g.provider_uid
       JOIN profiles p ON p.firebase_uid = g.provider_uid
-      WHERE g.status = 'active' AND pp.provider_status = 'active' AND p.account_status = 'active'
-      ORDER BY g.created_at DESC LIMIT 24
-    `).all();
-    return json({ gigs: data.results || [], paymentsEnabled: false });
+      ${query.sql}
+    `).bind(...query.params).all();
+    const rows = data.results || [];
+    return json({ gigs: rows.slice(0, filters.limit), nextOffset: rows.length > filters.limit ? filters.offset + filters.limit : null, paymentsEnabled: false });
+  }
+
+  const publicDetail = path.match(/^\/v1\/public\/gigs\/([0-9a-f-]+)$/i);
+  if (publicDetail && request.method === 'GET') {
+    const gigId = publicDetail[1];
+    if (!uuidPattern.test(gigId)) return json({ error: 'Not found' }, 404);
+    const gig = await env.DB.prepare(`
+      SELECT ${publicGigFields}, p.display_name AS provider_name, p.avatar_url AS provider_avatar,
+        p.bio AS provider_bio, p.campus AS provider_campus, p.city AS provider_city, pp.verified_at
+      FROM gigs g JOIN provider_profiles pp ON pp.firebase_uid = g.provider_uid
+      JOIN profiles p ON p.firebase_uid = g.provider_uid
+      WHERE g.id = ? AND ${publicGigWhere}
+    `).bind(gigId).first<{ category: string }>();
+    if (!gig) return json({ error: 'Gig not found' }, 404);
+    const [images, related] = await Promise.all([
+      env.DB.prepare('SELECT id FROM gig_images WHERE gig_id = ? ORDER BY created_at ASC LIMIT 8').bind(gigId).all(),
+      env.DB.prepare(`
+        SELECT g.id,g.title,g.category,g.price_kobo,g.delivery_days,g.location_type,
+          p.display_name AS provider_name, pp.verified_at,
+          (SELECT id FROM gig_images WHERE gig_id = g.id ORDER BY created_at LIMIT 1) AS cover_image_id
+        FROM gigs g JOIN provider_profiles pp ON pp.firebase_uid = g.provider_uid
+        JOIN profiles p ON p.firebase_uid = g.provider_uid
+        WHERE g.id != ? AND g.category = ? AND ${publicGigWhere}
+        ORDER BY g.created_at DESC LIMIT 3
+      `).bind(gigId, gig.category).all(),
+    ]);
+    return json({ gig, images: (images.results || []).map((image) => image.id), related: related.results || [], paymentsEnabled: false });
   }
 
   const publicImage = path.match(/^\/v1\/public\/gigs\/([0-9a-f-]+)\/images\/([0-9a-f-]+)$/i);

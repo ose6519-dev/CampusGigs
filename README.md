@@ -1,8 +1,8 @@
-# CampusGigs — Phase B
+# CampusGigs — Phase C
 
 Standalone service-marketplace foundation for Nigeria. **Not part of CampSell.**
 
-Phases A and B include:
+Phases A–C include:
 
 - Responsive gold / black / white buyer-facing website (desktop and mobile).
 - Firebase Auth (Google + email/password), using the **same Firebase project as CampSell** when configured.
@@ -15,10 +15,13 @@ Phases A and B include:
 - Separate admin review dashboard: view private IDs, approve, request corrections, reject; provider gold verification badge.
 - Verified-provider gig creation, four R2 images per gig, prices stored as integer **kobo**, location and future payment-option selection.
 - Admin gig moderation with removal/restoration and audit records.
+- **Customer-facing gig discovery:** text search, category, campus/city, online/in-person, naira price filters, sorting and paginated results.
+- **Individual gig detail pages** with real R2 image galleries, public verified-provider information, price, delivery and related gigs.
+- Refresh-safe, shareable `/gigs` and `/gigs/:id` links, polished two-column phone cards and native-feeling Android/iOS layouts.
 - Compact Android/iOS-style bottom navigation and bold typography on both sites.
-- Tests for input validation, auth rejection and both SQL migrations.
+- Tests for search input, SQL wildcard escaping, data visibility, auth rejection and both SQL migrations.
 
-**Not yet implemented:** full customer-facing browse/detail pages, bookings, Paystack, escrow, payouts, reviews, disputes, cron and notifications. These belong to Phases C–F. **No live payment can be charged by Phase B code.**
+**Not yet implemented:** bookings, Paystack, escrow, payouts, reviews, disputes, cron and notifications. These belong to Phases D–F. **No live payment can be charged by Phase C code.**
 
 ## Structure
 
@@ -32,6 +35,7 @@ CampusGigs/
 │   │   ├── src/auth.ts               # Verified Firebase JWT
 │   │   ├── src/index.ts              # Authorized API endpoints
 │   │   ├── src/phaseB.ts             # Provider workflows, R2 and gigs
+│   │   ├── src/publicGigs.ts         # Parameterized discovery query and validation
 │   │   ├── src/providerValidation.ts # Strict provider/gig input checks
 │   │   ├── src/validation.ts         # Input constraints
 │   │   └── tests/phase-a.test.mjs
@@ -39,6 +43,8 @@ CampusGigs/
 │       ├── .env.example              # Firebase Web config template
 │       ├── src/App.tsx               # Pages and profile UI
 │       ├── src/ProviderWorkspace.tsx # Apply, verify, create services
+│       ├── src/BrowseGigs.tsx        # Search, filters, real gig cards
+│       ├── src/GigDetail.tsx         # Gallery, provider and price details
 │       ├── src/firebase.ts           # Client-side Firebase login
 │       ├── src/api.ts                # Bearer token API calls
 │       └── src/styles.css
@@ -73,7 +79,7 @@ npm run dev:api
 Follow [docs/DEPLOY.md](docs/DEPLOY.md) for Cloudflare resource creation, migrations, Google authorised domain, and production variables.
 See [docs/ADMIN.md](docs/ADMIN.md) for the separate admin dashboard hosting and security model.
 
-## Phase A + B API
+## Phase A + B + C API
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
@@ -92,7 +98,8 @@ Only the verified Firebase UID determines profile ownership. Clients cannot set 
 | `GET` | `/v1/provider/gigs` | Member | Own gig listings |
 | `POST` | `/v1/provider/gigs` | Approved provider | Create an active gig |
 | `POST` | `/v1/provider/gigs/:id/images` | Gig owner/provider | Add gig image (maximum four) |
-| `GET` | `/v1/public/gigs` | Public | Limited listings for Phase C integration |
+| `GET` | `/v1/public/gigs` | Public | Filtered, sorted, paginated approved gig listings |
+| `GET` | `/v1/public/gigs/:id` | Public | Gig details, published gallery IDs and related listings |
 | `GET` | `/v1/public/gigs/:id/images/:imageId` | Public | Active gig image only |
 | `GET` | `/v1/admin/providers` | D1 admin | Review applications |
 | `GET` | `/v1/admin/providers/:id/evidence` | D1 admin | Private ID image |
@@ -101,6 +108,12 @@ Only the verified Firebase UID determines profile ownership. Clients cannot set 
 | `POST` | `/v1/admin/gigs/:id/moderate` | D1 admin | Remove/restore listing |
 
 All provider/admin actions require Firebase ID-token verification and D1 authorization. ID evidence is **never** served by a public route; private R2 keys are not returned by the application APIs. Price amounts are **integer kobo**. Images are MIME/signature validated and uploads have per-UID write limits. Provider decisions and moderation are recorded in audit tables.
+
+### Phase C discovery query
+
+`GET /v1/public/gigs?q=logo&category=Design%20%26%20Creative&location=Yenagoa&locationType=online&sort=newest&minPrice=1000&maxPrice=25000&limit=12&offset=0`
+
+Only active gigs belonging to active, approved providers and active accounts appear. `minPrice` and `maxPrice` are **naira** values for browsing; stored prices remain **integer kobo**. Accepted sorts: `newest`, `price_low`, `price_high`, `fastest`. The response returns `gigs`, `nextOffset` or `null`, and `paymentsEnabled:false`. Public gig detail and image routes use the same status checks, so moderated or suspended providers cannot expose removed listings through direct URLs.
 
 ### Important account distinction
 
