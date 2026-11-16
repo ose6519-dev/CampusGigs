@@ -1,0 +1,21 @@
+name: Phase R web release checks
+on:
+  push:
+    branches: [phase-r-web-release]
+permissions:
+  contents: read
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Check CampusGigs web types
+        run: npm run check -w @campusgigs/web
+      - name: Build CampusGigs production frontend
+        run: npm run build -w @campusgigs/web
