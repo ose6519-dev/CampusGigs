@@ -114,6 +114,7 @@ export async function chats(context:Context):Promise<Response|null>{
       CASE WHEN pp.public_id IS NOT NULL THEN 'provider' ELSE p.user_kind END AS other_kind,
       COALESCE(p.show_online,0) AS other_online,
       m.body AS last_body,m.kind AS last_kind,m.created_at AS last_at,m.cipher_version AS last_cipher_version,
+      m.client_id AS last_client_id,m.sender_uid AS last_sender_uid,
       EXISTS(SELECT 1 FROM chat_security s WHERE s.booking_id=b.id) AS secure,
       (SELECT COUNT(*) FROM chat_messages unread WHERE unread.booking_id=b.id
         AND unread.sender_uid<>? AND unread.created_at>COALESCE(
@@ -178,7 +179,7 @@ export async function chats(context:Context):Promise<Response|null>{
     const anchor=before?await env.DB.prepare('SELECT created_at,id FROM chat_messages WHERE id=? AND booking_id=?')
       .bind(before,id).first<{created_at:string;id:string}>():null;
     if(before&&!anchor)return json({error:'Message cursor not found'},400);
-    const rows=await env.DB.prepare(`SELECT m.id,m.sender_uid,m.client_id,m.kind,m.body,m.upload_id,m.reply_to,m.cipher_version,
+    const rows=await env.DB.prepare(`SELECT m.id,m.sender_uid,m.client_id,m.kind,m.body,m.upload_id,m.reply_to,m.cipher_version,m.media_group_id,
       m.pinned_by_uid,m.created_at,u.filename,u.mime_type,u.size_bytes,
       (SELECT body FROM chat_messages parent WHERE parent.id=m.reply_to) AS reply_body,
       (SELECT sender_uid FROM chat_messages parent WHERE parent.id=m.reply_to) AS reply_sender,
@@ -212,7 +213,7 @@ export async function chats(context:Context):Promise<Response|null>{
       .bind(after,id).first<{created_at:string;id:string}>():null;
     if(after&&!anchor)return json({error:'Message cursor not found'},400);
     const [rows,receipt,typing]=await Promise.all([
-      env.DB.prepare(`SELECT m.id,m.sender_uid,m.client_id,m.kind,m.body,m.upload_id,m.reply_to,m.cipher_version,
+      env.DB.prepare(`SELECT m.id,m.sender_uid,m.client_id,m.kind,m.body,m.upload_id,m.reply_to,m.cipher_version,m.media_group_id,
         m.pinned_by_uid,m.created_at,u.filename,u.mime_type,u.size_bytes,
         (SELECT body FROM chat_messages parent WHERE parent.id=m.reply_to) AS reply_body,
         (SELECT sender_uid FROM chat_messages parent WHERE parent.id=m.reply_to) AS reply_sender,
@@ -241,7 +242,7 @@ export async function chats(context:Context):Promise<Response|null>{
   if(action==='messages'&&request.method==='POST'){
     await context.rateLimit(env,user.uid,'chat-message',35);
     const data=asObject(await context.readJson(request));
-    noExtra(data,['clientId','kind','text','replyTo','uploadId']);
+    noExtra(data,['clientId','kind','text','replyTo','uploadId','groupId']);
     const clientId=data.clientId;
     if(typeof clientId!=='string'||!uuid.test(clientId))throw new InputError('Invalid message identifier');
     const kind=data.kind||'text';
@@ -263,6 +264,14 @@ export async function chats(context:Context):Promise<Response|null>{
         (encrypted?upload.mime_type!=='application/octet-stream'||upload.encrypted_kind!==kind:contentTypes[upload.mime_type]?.kind!==kind))
         return json({error:'Attachment not available for this chat mode'},404);
     }
+    const groupId=data.groupId||null;
+    if(groupId!==null&&(!uuid.test(String(groupId))||!['image','video','file'].includes(String(kind))))
+      throw new InputError('Invalid media album');
+    if(groupId){
+      const owner=await env.DB.prepare('SELECT sender_uid FROM chat_messages WHERE booking_id=? AND media_group_id=? LIMIT 1')
+        .bind(id,groupId).first<{sender_uid:string}>();
+      if(owner&&owner.sender_uid!==user.uid)throw new InputError('Invalid media album');
+    }
     const replyTo=data.replyTo||null;
     if(replyTo!==null){
       if(typeof replyTo!=='string'||!uuid.test(replyTo))throw new InputError('Invalid reply');
@@ -272,9 +281,9 @@ export async function chats(context:Context):Promise<Response|null>{
     }
     const msgId=crypto.randomUUID();
     const result=await env.DB.prepare(`INSERT OR IGNORE INTO chat_messages
-      (id,booking_id,sender_uid,client_id,kind,body,upload_id,reply_to,cipher_version) VALUES (?,?,?,?,?,?,?,?,?)`)
-      .bind(msgId,id,user.uid,clientId,kind,body,uploadId,replyTo,encrypted?1:0).run();
-    const saved=await env.DB.prepare('SELECT id,booking_id,kind,body,created_at,client_id,upload_id,reply_to,cipher_version FROM chat_messages WHERE booking_id=? AND sender_uid=? AND client_id=?')
+      (id,booking_id,sender_uid,client_id,kind,body,upload_id,reply_to,cipher_version,media_group_id) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+      .bind(msgId,id,user.uid,clientId,kind,body,uploadId,replyTo,encrypted?1:0,groupId).run();
+    const saved=await env.DB.prepare('SELECT id,booking_id,kind,body,created_at,client_id,upload_id,reply_to,cipher_version,media_group_id FROM chat_messages WHERE booking_id=? AND sender_uid=? AND client_id=?')
       .bind(id,user.uid,clientId).first();
     if(!saved)return json({error:'Attachment was already sent or message could not be saved'},409);
     return json({message:saved,reused:result.meta.changes===0},result.meta.changes===0?200:201);

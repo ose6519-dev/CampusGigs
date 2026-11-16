@@ -3,11 +3,12 @@ import type { User } from 'firebase/auth';
 import {apiRequest,chatMediaBlob,uploadChatMedia} from './api';
 import {decryptAttachment,decryptPayload,encryptAttachment,encryptPayload,type SecurePayload} from './cryptoEnvelope';
 import {chatEncryption,ensureDeviceIdentity} from './secureChat';
+import {ChatAttachmentStudio,validateChatFiles,type ChatFile} from './ChatAttachmentStudio';
 
 type ChatRow={booking_id:string;service_title:string;status:string;other_name:string;other_avatar:string;
   other_city:string;other_state:string;other_username:string;other_public_id:string|null;
   other_kind:string;other_online:number;last_body:string|null;last_kind:string|null;last_at:string|null;unread_count:number;
-  last_cipher_version:number;secure:number};
+  last_cipher_version:number;last_client_id:string|null;last_sender_uid:string|null;secure:number};
 type ChatDetail={booking:{bookingId:string;serviceTitle:string;status:string;otherName:string;otherAvatar:string;
   otherCity:string;otherState:string;otherUsername:string;otherPublicId:string|null;otherKind:string;otherOnline:number};
   preferences:{wallpaper:string;muted:number};otherReadAt:string|null;otherTyping:boolean;secure:boolean;secureSince:string|null};
@@ -15,10 +16,10 @@ type Reaction={message_id:string;reactor_uid:string;emoji:string};
 type Message={id:string;sender_uid:string;client_id:string;kind:'text'|'image'|'video'|'audio'|'file'|'sticker';
   body:string;upload_id:string|null;reply_to:string|null;reply_body:string|null;reply_sender:string|null;
   reply_client_id:string|null;reply_kind:string|null;reply_cipher_version:number|null;cipher_version:number;
-  pinned_by_uid:string|null;created_at:string;filename:string|null;mime_type:string|null;size_bytes:number|null;reactions:Reaction[]};
+  pinned_by_uid:string|null;created_at:string;filename:string|null;mime_type:string|null;size_bytes:number|null;media_group_id:string|null;reactions:Reaction[]};
 type MessagesPage={messages:Message[];hasMore:boolean};
 type ChatUpdates={messages:Message[];hasMore:boolean;otherReadAt:string|null;otherTyping:boolean};
-type Pending={bookingId:string;clientId:string;kind:Message['kind'];preview:string;wireText:string;uploadId:string|null;replyTo:string|null;
+type Pending={bookingId:string;clientId:string;kind:Message['kind'];preview:string;wireText:string;uploadId:string|null;replyTo:string|null;groupId?:string|null;
   state:'sending'|'sent'|'failed'};
 const pickerEmoji=['❤️','😂','👍','🔥','😮','😢','🙌','👏'];
 const stickerEmoji=['💛','✨','🎉','🤝','🙏','💪','🥰','✅','🚀','💯'];
@@ -56,8 +57,9 @@ function VoicePlayer({url}:{url:string}){
     <span className="cg-voice-mark" aria-hidden="true">✳</span>
   </div>;
 }
-function Media({user,bookingId,message,secretKey,meta}:{user:User;bookingId:string;message:Message;secretKey:CryptoKey|null;meta?:SecurePayload}){
+function Media({user,bookingId,message,secretKey,meta,compact=false}:{user:User;bookingId:string;message:Message;secretKey:CryptoKey|null;meta?:SecurePayload;compact?:boolean}){
   const [url,setUrl]=useState('');const [problem,setProblem]=useState(false);
+  const [expanded,setExpanded]=useState(false);
   useEffect(()=>{
     if(!message.upload_id)return;
     let cancelled=false;let resource='';
@@ -73,8 +75,18 @@ function Media({user,bookingId,message,secretKey,meta}:{user:User;bookingId:stri
   },[user,bookingId,message.upload_id,message.cipher_version,message.kind,secretKey,meta?.mime]);
   if(problem)return <span className="cg-media-error">Attachment unavailable</span>;
   if(!url)return <span className="cg-media-loading">Loading attachment…</span>;
-  if(message.kind==='image')return <a href={url} target="_blank" rel="noreferrer" aria-label="Open image"><img className="cg-chat-image" src={url} alt={meta?.filename||message.filename||'Shared photo'} loading="lazy"/></a>;
-  if(message.kind==='video')return <video className="cg-chat-video" src={url} controls playsInline preload="metadata"/>;
+  if(message.kind==='image'||message.kind==='video')return <>
+    <button type="button" className={`cg-media-tile ${compact?'compact':''}`} onClick={()=>setExpanded(true)}
+      aria-label={`Open ${message.kind==='video'?'video':'photo'} full size`}>
+      {message.kind==='image'?<img className="cg-chat-image" src={url} alt={meta?.filename||message.filename||'Shared photo'} loading="lazy"/>
+        :<><video className="cg-chat-video" src={url} muted playsInline preload="metadata"/><span className="cg-video-play">▶</span></>}
+    </button>
+    {expanded&&<div className="cg-media-viewer" role="dialog" aria-modal="true" aria-label="View shared media">
+      <button className="cg-media-viewer-close" onClick={()=>setExpanded(false)} aria-label="Close media">×</button>
+      {message.kind==='image'?<img src={url} alt={meta?.filename||'Shared photo'}/>
+        :<video src={url} controls autoPlay playsInline/>}
+    </div>}
+  </>;
   if(message.kind==='audio')return <VoicePlayer url={url}/>;
   return <a className="cg-file-bubble" href={url} download={meta?.filename||message.filename||'attachment'}><span>▤</span><span>{short(meta?.filename||message.filename||'Download file',32)}<small>{(meta?.size||message.size_bytes)?Math.round((meta?.size||message.size_bytes||0)/1024)+' KB':'File'}</small></span><span>↓</span></a>;
 }
@@ -94,6 +106,10 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
   const [reply,setReply]=useState<Message|null>(null);
   const [actions,setActions]=useState<Message|null>(null);
   const [picker,setPicker]=useState<'emoji'|'sticker'|null>(null);
+  const [attachmentMenu,setAttachmentMenu]=useState(false);
+  const [attachments,setAttachments]=useState<ChatFile[]>([]);
+  const [composerTyping,setComposerTyping]=useState(false);
+  const [listPreviews,setListPreviews]=useState<Record<string,string>>({});
   const [settings,setSettings]=useState(false);
   const [profile,setProfile]=useState(false);
   const [recording,setRecording]=useState(false);
@@ -102,17 +118,21 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
   const [otherReadAt,setOtherReadAt]=useState<string|null>(null);
   const [identity,setIdentity]=useState<Awaited<ReturnType<typeof ensureDeviceIdentity>>|null>(null);
   const [secureKey,setSecureKey]=useState<CryptoKey|null>(null);
-  const [securityCode,setSecurityCode]=useState<string|null>(null);
   const [securityError,setSecurityError]=useState('');
   const [decoded,setDecoded]=useState<Record<string,{payload:SecurePayload;replyText?:string}>>({});
   const [pending,setPending]=useState<Pending[]>([]);
   const [newMessageCount,setNewMessageCount]=useState(0);
   const inputRef=useRef<HTMLTextAreaElement>(null);
   const fileRef=useRef<HTMLInputElement>(null);
+  const photoRef=useRef<HTMLInputElement>(null);
+  const videoRef=useRef<HTMLInputElement>(null);
   const scrollRef=useRef<HTMLDivElement>(null);
   const recorder=useRef<MediaRecorder|null>(null);
   const voiceStream=useRef<MediaStream|null>(null);
   const lastTyped=useRef(0);
+  const typingOff=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const typingVisualTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const previewCache=useRef<Map<string,string>>(new Map());
   const touchOrigin=useRef<{x:number;y:number;id:string}|null>(null);
   const swipeAmount=useRef(0);
   const [swipe,setSwipe]=useState<{id:string;pixels:number}|null>(null);
@@ -139,6 +159,25 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
     finally{setLoading(false);}
   },[user,notice]);
   useEffect(()=>{void refreshChats();if(!user)return;const timer=setInterval(()=>{if(!document.hidden)void refreshChats();},16000);return()=>clearInterval(timer);},[refreshChats,user]);
+  useEffect(()=>{
+    if(!user||!identity||!chats.length)return;
+    let alive=true;
+    const remaining=chats.filter(chat=>chat.last_cipher_version===1&&chat.last_client_id&&chat.last_sender_uid&&chat.last_body)
+      .slice(0,35).filter(chat=>!previewCache.current.has(`${chat.booking_id}:${chat.last_client_id}`));
+    const preview=async(chat:ChatRow)=>{
+      const key=`${chat.booking_id}:${chat.last_client_id}`;
+      try{
+        const secure=await chatEncryption(user,chat.booking_id,identity);
+        if(!secure.key)return;
+        const value=await decryptPayload(secure.key,chat.booking_id,chat.last_kind||'text',chat.last_sender_uid!,chat.last_client_id!,chat.last_body!);
+        if(!alive)return;
+        const content=value.text||value.filename||(chat.last_kind==='audio'?'Voice message':'Shared attachment');
+        previewCache.current.set(key,content);setListPreviews(prev=>({...prev,[key]:content}));
+      }catch{/* On an unknown or mismatched device, never display ciphertext as plaintext. */}
+    };
+    void (async()=>{for(let offset=0;offset<remaining.length&&alive;offset+=4)await Promise.all(remaining.slice(offset,offset+4).map(preview));})();
+    return()=>{alive=false;};
+  },[user,identity,chats]);
   useEffect(()=>{if(initialBookingId)setSelected(initialBookingId);},[initialBookingId]);
   useEffect(()=>{
     const update=()=>document.documentElement.style.setProperty('--cg-chat-viewport',
@@ -221,17 +260,17 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
     setPending(prev=>prev.some(message=>ids.has(message.clientId))?prev.filter(message=>!ids.has(message.clientId)):prev);
   },[messages]);
   useEffect(()=>{
-    let alive=true;setSecureKey(null);setSecurityCode(null);derivedCode.current='';
+    let alive=true;setSecureKey(null);derivedCode.current='';
     if(!identity||!selected||!user)return;
     const load=async()=>{
       try{
         const state=await chatEncryption(user,selected,identity);
         if(!alive)return;
         if((state.code||'')!==derivedCode.current){
-          derivedCode.current=state.code||'';setSecureKey(state.key);setSecurityCode(state.code);
+          derivedCode.current=state.code||'';setSecureKey(state.key);
         }
         setSecurityError('');
-      }catch(error){if(alive){setSecureKey(null);setSecurityCode(null);setSecurityError(error instanceof Error?error.message:'Secure chat unavailable');}}
+      }catch(error){if(alive){setSecureKey(null);setSecurityError(error instanceof Error?error.message:'Secure chat unavailable');}}
     };
     void load();const timer=setInterval(()=>{if(!document.hidden)void load();},15000);
     return()=>{alive=false;clearInterval(timer);};
@@ -255,6 +294,12 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
   },[messages,secureKey,selected]);
   useEffect(()=>()=>{recorder.current?.state==='recording'&&recorder.current.stop();voiceStream.current?.getTracks().forEach(track=>track.stop());},[]);
   useEffect(()=>{if(!recording)return;const timer=setInterval(()=>setSeconds(s=>s+1),1000);return()=>clearInterval(timer);},[recording]);
+  useEffect(()=>{
+    const input=inputRef.current;if(!input)return;
+    input.style.height='auto';input.style.height=`${Math.min(input.scrollHeight,124)}px`;
+  },[draft,selected]);
+  useEffect(()=>()=>{if(typingOff.current)clearTimeout(typingOff.current);
+    if(typingVisualTimer.current)clearTimeout(typingVisualTimer.current);},[]);
 
   function openChat(id:string){
     setSelected(id);window.history.replaceState(null,'',`/messages/${id}`);
@@ -264,9 +309,16 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
     setSettings(false);setProfile(false);lastMessageId.current='';
   }
   function notifyTyping(){
-    if(!user||!selected||Date.now()-lastTyped.current<3000)return;
-    lastTyped.current=Date.now();
-    void apiRequest(user,`/v1/chats/${selected}/typing`,{method:'POST',body:JSON.stringify({active:true})}).catch(()=>{});
+    if(!user||!selected)return;
+    setComposerTyping(true);
+    if(typingVisualTimer.current)clearTimeout(typingVisualTimer.current);
+    typingVisualTimer.current=setTimeout(()=>setComposerTyping(false),1550);
+    if(Date.now()-lastTyped.current>=2800){lastTyped.current=Date.now();
+      void apiRequest(user,`/v1/chats/${selected}/typing`,{method:'POST',body:JSON.stringify({active:true})}).catch(()=>{});}
+    if(typingOff.current)clearTimeout(typingOff.current);
+    const bookingId=selected;
+    typingOff.current=setTimeout(()=>void apiRequest(user,`/v1/chats/${bookingId}/typing`,{
+      method:'POST',body:JSON.stringify({active:false})}).catch(()=>{}),2500);
   }
   const showText=(message:Message)=>message.cipher_version===1?
     decoded[message.id]?.payload.text||decoded[message.id]?.payload.filename||'🔒 Decrypting…':message.body;
@@ -276,7 +328,7 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
     try{
       await apiRequest(user,`/v1/chats/${item.bookingId}/messages`,{method:'POST',
         body:JSON.stringify({clientId:item.clientId,kind:item.kind,text:item.wireText,
-          uploadId:item.uploadId,replyTo:item.replyTo})});
+          uploadId:item.uploadId,replyTo:item.replyTo,groupId:item.groupId||null})});
       setPending(prev=>prev.map(message=>message.clientId===item.clientId?{...message,state:'sent'}:message));
       void pollThread(item.bookingId);void refreshChats();
     }catch(error){
@@ -298,28 +350,36 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
       const clientId=crypto.randomUUID();
       const body=detail?.secure?await encryptPayload(secureKey!,selected,kind,user.uid,clientId,{text:text.trim()}):text.trim();
       queueMessage({bookingId:selected,clientId,kind,preview:text.trim(),wireText:body,uploadId,replyTo:reply?.id||null});
-      setDraft('');setReply(null);setPicker(null);
+      setDraft('');setReply(null);setPicker(null);setComposerTyping(false);
       inputRef.current?.focus();
     }catch(error){notice(error instanceof Error?error.message:'Message could not be sent');}
     finally{setBusy(false);}
   }
-  async function attach(event:ChangeEvent<HTMLInputElement>){
-    const file=event.target.files?.[0];
-    if(!file||!user||!selected)return;
+  function chooseAttachments(event:ChangeEvent<HTMLInputElement>,kind:ChatFile['kind']){
+    const files=Array.from(event.target.files||[]).map(file=>({file,kind}));
     event.target.value='';
-    if(detail?.secure&&!secureKey){notice('Secure device key unavailable. Attachment not sent.');return;}
+    const problem=validateChatFiles(files);
+    if(problem){notice(problem);return;}
+    setAttachmentMenu(false);setPicker(null);setAttachments(files);
+  }
+  async function sendAttachments(items:ChatFile[]){
+    if(!user||!selected||busy)return;
+    if(detail?.secure&&!secureKey)throw new Error('Secure device key unavailable. Attachment not sent.');
+    const bookingId=selected,secure=!!detail?.secure,key=secureKey,replyId=reply?.id||null;
+    const groupId=items.length>1?crypto.randomUUID():null;
     setBusy(true);
     try{
-      const kind=file.type.startsWith('image/')?'image':file.type.startsWith('video/')?'video':
-        file.type.startsWith('audio/')?'audio':'file';
-      const secure=!!detail?.secure,clientId=crypto.randomUUID();
-      const content=secure?await encryptAttachment(secureKey!,selected,kind,file):file;
-      const upload=await uploadChatMedia(user,selected,content,secure?'Encrypted attachment':file.name,secure?kind:undefined);
-      const body=secure?await encryptPayload(secureKey!,selected,kind,user.uid,clientId,
-        {text:'',filename:file.name,mime:file.type,size:file.size}):'';
-      queueMessage({bookingId:selected,clientId,kind:upload.kind,preview:file.name,
-        wireText:body,uploadId:upload.id,replyTo:reply?.id||null});setReply(null);
-    }catch(error){notice(error instanceof Error?error.message:'Attachment failed');}
+      for(const [index,item] of items.entries()){
+        const {file,kind}=item,clientId=crypto.randomUUID();
+        const content=secure?await encryptAttachment(key!,bookingId,kind,file):file;
+        const upload=await uploadChatMedia(user,bookingId,content,secure?'Encrypted attachment':file.name,secure?kind:undefined);
+        const body=secure?await encryptPayload(key!,bookingId,kind,user.uid,clientId,
+          {text:'',filename:file.name,mime:file.type,size:file.size}):'';
+        queueMessage({bookingId,clientId,kind:upload.kind,preview:file.name,
+          wireText:body,uploadId:upload.id,replyTo:index===0?replyId:null,groupId});
+      }
+      setAttachments([]);setReply(null);
+    }catch(error){throw error instanceof Error?error:new Error('Attachment failed');}
     finally{setBusy(false);}
   }
   async function startVoice(){
@@ -381,12 +441,12 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
   }
   async function enableSecurity(){
     if(!selected||!user||detail?.secure||!secureKey||busy)return;
-    if(!window.confirm('Enable encrypted messages and attachments for this chat? Older messages remain unencrypted. Only your current device can read new messages; losing this device may mean losing access. Both people should compare the security code.'))return;
+    if(!window.confirm('Enable encrypted messages and attachments for this chat? Older messages remain unencrypted. Only the original device can read new messages. Losing it could mean losing access.'))return;
     setBusy(true);
     try{
       await apiRequest(user,`/v1/chats/${selected}/secure/enable`,{method:'POST'});
       await refreshThread(selected);await refreshChats();setSettings(false);
-      notice('Encrypted chat enabled. Compare your safety code with the other person.');
+      notice('New messages and attachments are encrypted on this device.');
     }catch(error){notice(error instanceof Error?error.message:'Could not enable encrypted chat');}
     finally{setBusy(false);}
   }
@@ -423,7 +483,7 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
               <Avatar name={item.other_name} src={item.other_avatar}/>
               <span className="cg-thread-center"><span className="cg-thread-top"><strong>{item.other_name}</strong><small>{time(item.last_at)}</small></span>
                 <span className="cg-thread-sub">{item.other_username?'@'+item.other_username+' · ':''}{item.service_title}</span>
-                <span className="cg-thread-preview">{item.last_cipher_version===1?'🔒 Encrypted message':
+                <span className="cg-thread-preview">{item.last_cipher_version===1?(listPreviews[`${item.booking_id}:${item.last_client_id}`]||'🔒 Private message'):
                   item.last_body|| (item.last_kind?'📎 '+item.last_kind:'Say hello 👋')}</span></span>
               {!!item.unread_count&&<span className="cg-chat-unread">{Math.min(99,item.unread_count)}</span>}
             </button>)
@@ -451,8 +511,7 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
         <div ref={scrollRef} className={`cg-chat-scroll cg-wallpaper-${detail?.preferences.wallpaper||'warm'}`} role="log" aria-label="Messages"
           onScroll={event=>{const box=event.currentTarget;if(box.scrollHeight-box.scrollTop-box.clientHeight<70)setNewMessageCount(0);}}>
           <div className={`cg-chat-security ${detail?.secure?'cg-chat-protected':''}`}>
-            {detail?.secure?<><strong>🔒 Encrypted on your device</strong><span>New messages and files are device-encrypted. Older messages are not.</span>
-              {securityCode&&<span className="cg-safety-code">Safety code: {securityCode}</span>}</>
+            {detail?.secure?<strong>🔒 Encrypted on this device</strong>
               :<><strong>◈ Standard booking chat</strong><span>Not end-to-end encrypted.</span>
                 {secureKey&&<button type="button" disabled={busy} onClick={()=>void enableSecurity()}>Enable encryption ↗</button>}</>}
             {securityError&&<span className="cg-security-warning" role="alert">⚠ {securityError}</span>}
@@ -460,6 +519,8 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
           {hasMore&&<button className="cg-more-messages" onClick={()=>void older()}>↑ Load earlier messages</button>}
           {!messages.length&&<div className="cg-chat-first"><span>💛</span><h3>Say hello!</h3><p>Share what you need, ask questions, or send a voice note.</p></div>}
           {messages.map(message=>{
+            const album=message.media_group_id?messages.filter(item=>item.media_group_id===message.media_group_id):[];
+            if(album.length>1&&album[0].id!==message.id)return null;
             const mine=message.sender_uid===user?.uid;
             const text=showText(message);
             const meta=decoded[message.id]?.payload;
@@ -489,23 +550,31 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
               onTouchCancel={()=>{if(holdTimer.current)clearTimeout(holdTimer.current);touchOrigin.current=null;setSwipe(null);}}
               onContextMenu={event=>{event.preventDefault();setActions(message);}}>
               <span className="cg-swipe-indicator" aria-hidden="true" style={{opacity:swipe?.id===message.id?Math.min(1,swipe.pixels/65):0}}>↪</span>
-              <div className={`cg-chat-bubble ${message.kind==='sticker'?'cg-sticker-bubble':''}`}
+              <div className={`cg-chat-bubble ${message.kind==='sticker'?'cg-sticker-bubble':''} ${album.length>1?'cg-chat-album-bubble':''}`}
                 style={{transform:`translate3d(${swipe?.id===message.id?swipe.pixels:0}px,0,0)`}}
                 onDoubleClick={()=>{setReply(message);inputRef.current?.focus();}}>
                 {message.reply_to&&<div className="cg-quoted"><small>{message.reply_sender===user?.uid?'You':'Reply'}</small>
                   <span>{short(message.reply_cipher_version===1?(decoded[message.id]?.replyText||'🔒 Encrypted reply'):
                     message.reply_body||'Attachment',100)}</span></div>}
-                {message.upload_id&&user&&(message.cipher_version!==1||meta)&&<Media user={user} bookingId={selected} message={message} secretKey={secureKey} meta={meta}/>}
-                {message.cipher_version===1&&message.upload_id&&!meta&&<span className="cg-media-loading">🔒 Decrypting attachment…</span>}
+                {album.length>1?<div className="cg-chat-album" aria-label={`${album.length} shared attachments`}>
+                  {album.map(item=><div key={item.id} className="cg-chat-album-item">
+                    {item.upload_id&&user&&(item.cipher_version!==1||decoded[item.id]?.payload)?
+                      <Media user={user} bookingId={selected} message={item} secretKey={secureKey} meta={decoded[item.id]?.payload} compact/>:
+                      <span className="cg-media-loading">🔒 Opening…</span>}
+                  </div>)}
+                  <span className="cg-album-count">{album.length} files</span>
+                </div>:<>
+                  {message.upload_id&&user&&(message.cipher_version!==1||meta)&&<Media user={user} bookingId={selected} message={message} secretKey={secureKey} meta={meta}/>}
+                  {message.cipher_version===1&&message.upload_id&&!meta&&<span className="cg-media-loading">🔒 Opening attachment…</span>}
+                </>}
                 {(message.kind==='text'||message.kind==='sticker'||(message.cipher_version===1&&!message.upload_id))&&
                   <span className="cg-message-text">{text}</span>}
-                {message.cipher_version!==1&&detail?.secure&&<span className="cg-legacy-label">Older · not encrypted</span>}
-                <span className="cg-chat-time">{time(message.created_at)} {mine?'✓':''} {message.pinned_by_uid?'📌':''}</span>
+                <span className="cg-chat-time">{time(album.at(-1)?.created_at||message.created_at)} {mine?'✓':''} {message.pinned_by_uid?'📌':''}</span>
               </div>
               {!!message.reactions.length&&<div className="cg-reactions">{message.reactions.map(reaction=><button key={reaction.reactor_uid}
                 onClick={()=>void react(message,reaction.emoji)} title={reaction.reactor_uid===user?.uid?'Remove reaction':'React'}>
                 {reaction.emoji}</button>)}</div>}
-              {message.id===lastOutgoingRead&&<span className="cg-read-avatar" title="Seen"><Avatar size="small" name={detail?.booking.otherName||''} src={detail?.booking.otherAvatar}/></span>}
+              {(message.id===lastOutgoingRead||album.at(-1)?.id===lastOutgoingRead)&&<span className="cg-read-avatar" title="Seen"><Avatar size="small" name={detail?.booking.otherName||''} src={detail?.booking.otherAvatar}/></span>}
               <button type="button" className="cg-message-more" aria-label="Message actions" onClick={()=>setActions(message)}>•••</button>
             </div>;
           })}
@@ -526,9 +595,12 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
           {picker&&<div className="cg-picker" aria-label={picker==='emoji'?'Emojis':'Stickers'}>{(picker==='emoji'?pickerEmoji:stickerEmoji).map(emoji=>
             <button key={emoji} onClick={()=>{if(picker==='sticker')void send('sticker',emoji);else {setDraft(prev=>prev+emoji);inputRef.current?.focus();setPicker(null);}}}>{emoji}</button>)}</div>}
           {recording?<div className="cg-record-bar"><span className="cg-record-pulse">●</span><strong>Recording {Math.floor(seconds/60)}:{String(seconds%60).padStart(2,'0')}</strong><button onClick={()=>stopVoice(true)}>Discard</button><button className="cg-record-send" onClick={()=>stopVoice()}>Send ↗</button></div>
-          :<form className="cg-composer" onSubmit={(event:FormEvent)=>{event.preventDefault();void send();}}>
-            <button type="button" className="cg-tool-btn" title="Attach photo, video or file" aria-label="Attach file" onClick={()=>fileRef.current?.click()} disabled={busy||!!detail?.secure&&!secureKey}>＋</button>
-            <input ref={fileRef} type="file" className="cg-file-input" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,audio/webm,audio/ogg,audio/mpeg,audio/mp4,application/pdf,text/plain,.doc,.docx,.xls,.xlsx" onChange={event=>void attach(event)}/>
+          :<form className={`cg-composer ${composerTyping?'is-typing':''}`} onSubmit={(event:FormEvent)=>{event.preventDefault();void send();}}>
+            <button type="button" className="cg-tool-btn" title="Photos, videos and files" aria-label="Choose attachment type" aria-expanded={attachmentMenu}
+              onClick={()=>{setAttachmentMenu(value=>!value);setPicker(null);}} disabled={busy||!!detail?.secure&&!secureKey}>＋</button>
+            <input ref={photoRef} type="file" multiple className="cg-file-input" accept="image/jpeg,image/png,image/webp,image/gif" onChange={event=>chooseAttachments(event,'image')}/>
+            <input ref={videoRef} type="file" multiple className="cg-file-input" accept="video/mp4,video/webm" onChange={event=>chooseAttachments(event,'video')}/>
+            <input ref={fileRef} type="file" multiple className="cg-file-input" accept="application/pdf,text/plain,.doc,.docx,.xls,.xlsx" onChange={event=>chooseAttachments(event,'file')}/>
             <div className="cg-compose-field"><textarea ref={inputRef} aria-label="Message" value={draft} rows={1} maxLength={detail?.secure?1200:2000}
               placeholder="Write a message…" onChange={event=>{setDraft(event.target.value);notifyTyping();}}
               onKeyDown={event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();void send();}}}/>
@@ -538,6 +610,11 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
             {draft.trim()?<button type="submit" className="cg-send-btn" disabled={busy||!!detail?.secure&&!secureKey} aria-label="Send message">{busy?'…':'➤'}</button>
               :<button type="button" className="cg-send-btn cg-mic-btn" disabled={busy||!!detail?.secure&&!secureKey} onClick={()=>void startVoice()} aria-label="Record voice note">♩</button>}
           </form>}
+          {attachmentMenu&&!recording&&<div className="cg-attachment-menu" role="group" aria-label="Choose attachment">
+            <button type="button" onClick={()=>photoRef.current?.click()}><span>▣</span> Photos</button>
+            <button type="button" onClick={()=>videoRef.current?.click()}><span>▶</span> Videos</button>
+            <button type="button" onClick={()=>fileRef.current?.click()}><span>▤</span> Files</button>
+          </div>}
         </div>
         </>}
       </div>
@@ -567,9 +644,8 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
           {detail.preferences.muted?'🔕 Unmute conversation':'🔔 Mute conversation'}</button>
         <div className="cg-secure-settings">
           <strong>{detail.secure?'🔒 Device-encrypted chat':'◈ Standard chat (not end-to-end encrypted)'}</strong>
-          {detail.secure?<><p>New messages and attachments are encrypted. Older messages remain unencrypted.</p>
-            {securityCode&&<code>{securityCode}</code>}
-            <small>Compare this code with the other person. Keys are stored on this device; no recovery or second-device support yet.</small></>
+          {detail.secure?<><p>New messages and files are device-encrypted. Older messages remain unencrypted.</p>
+            <small>Your private key stays on this device. Switching or losing the device may prevent access to these messages.</small></>
             :<><p>Both people must first open Messages on their own device.</p>
               <button type="button" disabled={!secureKey||busy} onClick={()=>void enableSecurity()}>
                 {secureKey?'Enable encrypted chat ↗':'Waiting for both device keys'}</button></>}
@@ -588,5 +664,6 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
         {!!detail.booking.otherPublicId&&<button className="button button-dark" onClick={()=>{onProfile(detail.booking.otherPublicId!);setProfile(false);}}>View public profile ↗</button>}
       </div>
     </div>}
+    {!!attachments.length&&<ChatAttachmentStudio files={attachments} onCancel={()=>setAttachments([])} onSend={sendAttachments} busy={busy}/>}
   </section>;
 }

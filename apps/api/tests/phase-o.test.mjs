@@ -142,7 +142,33 @@ test('Phase P keys are immutable, secure mode is opt-in, and D1 rejects plaintex
   assert.equal(page[0].cipher_version,0,'older messages retain their legacy marker');
   assert.equal(page[1].cipher_version,1,'new messages carry encryption marker');
   assert.equal((await call('/v1/me/chats')).body.chats[0].last_cipher_version,1);
+  assert.equal((await call('/v1/me/chats')).body.chats[0].last_client_id,encrypted.body.message.client_id,
+    'encrypted inbox previews receive the AAD needed for local decryption');
+  assert.equal((await call('/v1/me/chats')).body.chats[0].last_sender_uid,'buyer');
   assert.equal((await call('/v1/me/chats')).body.chats[0].secure,1);
+  db.close();
+});
+
+test('Phase P grouped media remains associated across fetches and isolated to the sender',async()=>{
+  const {db,call,bookingId:id}=fixture();
+  const groupId=randomUUID();
+  for(const filename of ['one.png','two.png']){
+    const blob=new Blob(['tiny image'],{type:'image/png'});
+    const upload=(await call(`/v1/chats/${id}/media`,{method:'POST',body:blob,
+      headers:{'content-type':'image/png','x-file-name':filename}})).body.upload;
+    assert.equal((await call(`/v1/chats/${id}/messages`,{method:'POST',body:{
+      clientId:randomUUID(),kind:'image',uploadId:upload.id,groupId}})).status,201);
+  }
+  const list=(await call(`/v1/chats/${id}/messages`)).body.messages;
+  assert.equal(list.filter(message=>message.media_group_id===groupId).length,2);
+  assert.equal((await call(`/v1/chats/${id}/updates`)).body.messages.filter(message=>message.media_group_id===groupId).length,2);
+  await assert.rejects(()=>call(`/v1/chats/${id}/messages`,{method:'POST',body:{
+    clientId:randomUUID(),kind:'text',text:'hello',groupId}}),/Invalid media album/);
+  const foreign=new Blob(['more'],{type:'image/png'});
+  const otherUpload=(await call(`/v1/chats/${id}/media`,{uid:'provider',method:'POST',body:foreign,
+    headers:{'content-type':'image/png'}})).body.upload;
+  await assert.rejects(()=>call(`/v1/chats/${id}/messages`,{uid:'provider',method:'POST',
+    body:{clientId:randomUUID(),kind:'image',uploadId:otherUpload.id,groupId}}),/Invalid media album/);
   db.close();
 });
 
