@@ -14,7 +14,7 @@ This project uses the new Cloudflare `cf` CLI and `cloudflare.config.ts` for the
 ## Resources — new names only
 
 - GitHub repository: `ose6519-dev/CampusGigs` (exists).
-- Pages: `campusgigs` → `https://campusgigs-97y.pages.dev` (**project created, first deployment pending**).
+- Pages: `campusgigs` → `https://campusgigs-97y.pages.dev` (**GitHub-connected production deployment live**).
 - Worker: `campusgigs-api` → `https://campusgigs-api.ose6519.workers.dev` (**deployed**).
 - D1: `campusgigs-db` (`d6e582ae-173a-412d-a345-f516bd40f2f2`; first migration applied).
 - R2: `campusgigs-media` (created, reserved for provider verification files in Phase B).
@@ -29,20 +29,22 @@ Migration `apps/api/migrations/0001_profiles.sql` has been applied **only** to `
 
 1. The CampusGigs Firebase Web App is already registered under the same Firebase project as CampSell.
 2. `campusgigs-97y.pages.dev` has been added to Firebase Authentication's authorized domains.
-3. Six `VITE_FIREBASE_*` and `VITE_API_BASE_URL` environment settings have been configured on the CampusGigs Pages project, using its new Firebase Web App ID `1:730162931074:web:1a6c535fe1695d1a951b9b`.
+3. Five `VITE_FIREBASE_*` settings and `VITE_API_BASE_URL` have been configured on the CampusGigs Pages project, using its new Firebase Web App ID `1:730162931074:web:1a6c535fe1695d1a951b9b`.
 4. The Worker is configured to verify Firebase tokens for the correct project. Firebase credentials remain private; only the public Web App configuration is in the frontend.
 
 ## Cloudflare Pages
 
-The `campusgigs` Pages project already exists and has **no deployment**. It is a Direct Upload project, so a separate build is required. It cannot be converted to Git integration in place.
+The Cloudflare Pages API successfully connected **the existing empty `campusgigs` project** to the GitHub repository, without deleting it or changing its hostname. A successful `main` production deployment was then created directly from GitHub commit `d96816af0eec53bb3b9e5ba5e5c2f2e3a0a17439`.
 
 - Build command: `npm run build -w @campusgigs/web`.
 - Build output directory: `apps/web/dist`.
-- Prepared upload archive: `/workspace/shared/CampusGigs-phase-a.zip` (contains `_redirects`, `index.html`, and assets at the root).
-- Production branch: `main`; choose **production**, not preview, for the upload.
-- The Cloudflare plugin can configure Pages but the assets upload API currently returns `403 Authorization failed`, even when using the Pages upload JWT. The Cloudflare dashboard alternative reached a sign-in wall and secure sign-in was not completed. **Do not claim the website is live.**
+- GitHub source: `ose6519-dev/CampusGigs`.
+- Production branch: `main`, automatic production deployment enabled.
+- Preview branch deployments disabled by configuration.
+- First successful production deployment ID: `512835a7-6106-4430-b928-1530d8edc2f1`.
+- The earlier asset-upload API limitation is bypassed using the authenticated GitHub source build; no browser upload is needed.
 
-The Worker is already deployed. Do not use `cf deploy --temporary-account`, which would target a different Cloudflare account. To finish the Pages upload, use the correct account's dashboard Direct Upload UI or configure local Wrangler with the correct account permissions.
+The Worker is already deployed. Do not use `cf deploy --temporary-account`, which would target a different Cloudflare account. Future website changes should be committed to GitHub `main` and built by Cloudflare Pages.
 
 ## Verification checklist
 
@@ -50,7 +52,8 @@ The Worker is already deployed. Do not use `cf deploy --temporary-account`, whic
 - All four Phase A tests pass.
 - API `GET /health` reports `{ "service": "campusgigs-api", "status": "ok", "phase": "A" }`.
 - Without a token, `GET /v1/me` returns `401`.
-- The live authenticated UI-to-Worker flow is **not verified** until the Pages frontend is deployed.
+- The live homepage, category list, CampSell links and sign-in modal have been verified in the browser.
+- A real signed-in Firebase user completing an API profile request still needs end-to-end verification.
 - Sending a different UID in a profile update is rejected; callers cannot edit `role` or `account_status`.
 - `PATCH /v1/me` persists a display name, campus, city or bio in **CampusGigs D1 only**.
 - Buying/Providing switch saves the preference but does not unlock provider operations.
