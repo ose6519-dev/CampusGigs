@@ -2807,6 +2807,8 @@ var reactions = /* @__PURE__ */ new Set([
 	"🙌",
 	"👏"
 ]);
+var reactionKey = (value) => value.normalize("NFC").replace(/\uFE0F/g, "");
+var canonicalReaction = (value) => typeof value === "string" && value.length <= 8 ? [...reactions].find((item) => reactionKey(item) === reactionKey(value.trim())) || null : null;
 var stickers = /* @__PURE__ */ new Set([
 	"💛",
 	"✨",
@@ -3017,7 +3019,7 @@ async function chats(context) {
       p.cg_username AS other_username,COALESCE(pp.public_id,p.member_public_id) AS other_public_id,
       CASE WHEN pp.public_id IS NOT NULL THEN 'provider' ELSE p.user_kind END AS other_kind,
       COALESCE(p.show_online,0) AS other_online,
-      m.body AS last_body,m.kind AS last_kind,m.created_at AS last_at,m.cipher_version AS last_cipher_version,
+      m.body AS last_body,m.kind AS last_kind,m.upload_id AS last_upload_id,m.mime_type AS last_mime_type,\n      m.created_at AS last_at,m.cipher_version AS last_cipher_version,
       m.client_id AS last_client_id,m.sender_uid AS last_sender_uid,
       EXISTS(SELECT 1 FROM chat_security s WHERE s.booking_id=b.id) AS secure,
       (SELECT COUNT(*) FROM chat_messages unread WHERE unread.booking_id=b.id
@@ -3271,9 +3273,10 @@ async function chats(context) {
 			else {
 				const data = asObject(await context.readJson(request));
 				noExtra(data, ["emoji"]);
-				if (!reactions.has(String(data.emoji))) throw new InputError("Choose an available reaction");
+				const selected = canonicalReaction(data.emoji);
+				if (!selected) throw new InputError("Choose an available reaction");
 				await env.DB.prepare(`INSERT INTO chat_reactions(message_id,reactor_uid,emoji) VALUES (?,?,?)
-          ON CONFLICT(message_id,reactor_uid) DO UPDATE SET emoji=excluded.emoji`).bind(messageId, user.uid, data.emoji).run();
+          ON CONFLICT(message_id,reactor_uid) DO UPDATE SET emoji=excluded.emoji`).bind(messageId, user.uid, selected).run();
 			}
 			return json({ ok: true });
 		}
