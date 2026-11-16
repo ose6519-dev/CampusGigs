@@ -7,7 +7,7 @@ import { bookings, adminBookings } from './bookings';
 import { parseOnboarding } from './onboardingValidation';
 import { findInstitution, institutionIdPattern, nigeriaStates } from './institutions.ts';
 import { notifications } from './notifications.ts';
-import { parseAcademics } from './academicValidation.ts';
+import { validateSchoolAcademics } from './academicCatalog.ts';
 import { community } from './community.ts';
 import { searchAccount } from './searchAccount.ts';
 
@@ -84,7 +84,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   const requestUrl = new URL(request.url);
   const path = requestUrl.pathname;
   if (path === '/health' && request.method === 'GET') {
-    return json({ service: 'campusgigs-api', status: 'ok', phase: 'J', bookingsEnabled: true, paymentsEnabled: false });
+    return json({ service: 'campusgigs-api', status: 'ok', phase: 'K', bookingsEnabled: true, paymentsEnabled: false });
   }
   if (!path.startsWith('/v1/')) return json({ error: 'Not found' }, 404);
   if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
@@ -191,12 +191,13 @@ async function route(request: Request, env: Env): Promise<Response> {
     const value=parseOnboarding(await readBody(request));
     const institution=value.institutionId?await findInstitution(env,value.institutionId):null;
     if (institution && institution.state_name!==value.state) return json({error:'That school is not in the selected state'},400);
+    const academics = validateSchoolAcademics(institution?.id || '', value.faculty, value.department);
     await env.DB.prepare(`
       UPDATE profiles SET onboarding_completed=1,user_kind=?,age_range=?,student_status=?,interests_json=?,
         display_name=?,campus=?,city=?,state_name=?,institution_id=?,faculty=?,department=?,active_mode=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
       WHERE firebase_uid=? AND account_status='active'
     `).bind(value.userKind,value.ageRange,value.studentStatus,JSON.stringify(value.interests),value.displayName,
-      institution?.name||'',value.city,value.state,institution?.id||null,value.faculty,value.department,
+      institution?.name||'',value.city,value.state,institution?.id||null,academics.faculty,academics.department,
       value.userKind==='provider'?'providing':'buying',user.uid).run();
     return json({completed:true});
   }
@@ -213,7 +214,9 @@ async function route(request: Request, env: Env): Promise<Response> {
     if(typeof id!=='string'||(id&&!institutionIdPattern.test(id))) throw new InputError('Select a recognised institution');
     const institution=id?await findInstitution(env,id):null;
     if(institution&&institution.state_name!==value.state) throw new InputError('Institution does not belong to that state');
-    const academics=parseAcademics(value.faculty??profile.faculty??'',value.department??profile.department??'');
+    const academics=validateSchoolAcademics(institution?.id||'',value.faculty??profile.faculty??'',value.department??profile.department??'',{
+      institutionId:profile.institution_id,faculty:profile.faculty,department:profile.department,
+    });
     if (!institution && (academics.faculty || academics.department)) throw new InputError('Select your institution before adding academic details');
     await env.DB.prepare(`UPDATE profiles SET state_name=?,institution_id=?,campus=?,faculty=?,department=?,
       updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE firebase_uid=?`)

@@ -23,8 +23,9 @@
 .academic-heading strong{font-size:12px;font-weight:900;color:#362d20}
 .academic-heading small,.academic-note{font-size:10px;color:#897e6b;font-weight:600}
 .academic-fields label{display:flex;flex-direction:column;gap:7px;font-size:11px;font-weight:850;min-width:0;color:#443a2a}
-.academic-fields input{width:100%;min-width:0;min-height:44px;border-radius:12px;padding:0 12px;border:1px solid #e1d8c6;background:#fff;color:#201b17;font:650 12px Manrope,sans-serif;outline:none}
-.academic-fields input:focus{border-color:#b9912f;box-shadow:0 0 0 3px #dbb85b29}
+.academic-fields input,.academic-fields select{width:100%;min-width:0;min-height:44px;border-radius:12px;padding:0 12px;border:1px solid #e1d8c6;background:#fff;color:#201b17;font:650 12px Manrope,sans-serif;outline:none}
+.academic-fields input:focus,.academic-fields select:focus{border-color:#b9912f;box-shadow:0 0 0 3px #dbb85b29}
+.academic-fields input:disabled,.academic-fields select:disabled{opacity:.6;background:#f7f3ec}
 .academic-fields .academic-note{grid-column:1/-1}
 .first-run .academic-fields{padding:12px;background:#fffaf1;border:1px solid #ede5d4;border-radius:15px}
 .location-settings-card .academic-fields{padding-top:8px}

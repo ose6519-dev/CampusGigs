@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react';
+import { publicRequest } from './api';
+
 // Search suggestions, not an official faculty/department roster for each institution.
 // Nigerian schools have different naming conventions; members can enter their official wording.
 const courses: Record<string, string[]> = {
@@ -24,20 +27,42 @@ const courses: Record<string, string[]> = {
 const faculties = Object.keys(courses);
 const departments = [...new Set(Object.values(courses).flat())].sort((a,b)=>a.localeCompare(b));
 
-export function AcademicPicker({faculty,department,onChange,prefix}:{
-  faculty:string;department:string;onChange:(faculty:string,department:string)=>void;prefix:string;
+type AcademicCatalog = { institutionId:string; verified:boolean; sourceUrl:string|null; faculties:Record<string,string[]> };
+
+export function AcademicPicker({faculty,department,institutionId,onChange,prefix}:{
+  faculty:string;department:string;institutionId:string;onChange:(faculty:string,department:string)=>void;prefix:string;
 }){
+  const [catalog,setCatalog] = useState<AcademicCatalog|null>(null);
+  useEffect(()=>{
+    if(!institutionId){setCatalog(null);return;}
+    const controller=new AbortController();
+    setCatalog(null);
+    void publicRequest<Omit<AcademicCatalog,'institutionId'> & { institutionId:string }>(`/v1/public/institutions/${institutionId}/academics`,controller.signal)
+      .then(result=>setCatalog(result))
+      .catch(()=>{if(!controller.signal.aborted)setCatalog({institutionId,verified:false,sourceUrl:null,faculties:{}});});
+    return ()=>controller.abort();
+  },[institutionId]);
+  const ready=catalog?.institutionId===institutionId;
+  const verified=ready&&catalog.verified;
+  const officialFaculties=verified?Object.keys(catalog.faculties):[];
+  const officialDepartments=verified?(catalog.faculties[faculty]||[]):[];
   const choices = faculty && courses[faculty] ? courses[faculty] : departments;
   return <div className="academic-fields">
-    <div className="academic-heading"><strong>Faculty & department</strong><small>Optional · Use your school's official names</small></div>
+    <div className="academic-heading"><strong>Faculty & department</strong><small>{verified?'✓ Institution-specific list':ready?'Suggested · Please confirm with your school':'Loading school choices…'}</small></div>
     <label>Faculty / School
-      <input list={`${prefix}-faculties`} value={faculty} maxLength={80} autoComplete="off" placeholder="Search or enter faculty" onChange={event=>onChange(event.target.value,'')}/>
-      <datalist id={`${prefix}-faculties`}>{faculties.map(value=><option key={value} value={value}/>)}</datalist>
+      {verified?<select value={faculty} onChange={event=>onChange(event.target.value,'')}>
+        <option value="">Select faculty</option>{faculty&&!officialFaculties.includes(faculty)&&<option value={faculty}>{faculty} (previous)</option>}
+        {officialFaculties.map(value=><option key={value} value={value}>{value}</option>)}
+      </select>:<><input disabled={!ready} list={`${prefix}-faculties`} value={faculty} maxLength={80} autoComplete="off" placeholder={ready?'Search or enter faculty':'Loading…'} onChange={event=>onChange(event.target.value,'')}/>
+      <datalist id={`${prefix}-faculties`}>{faculties.map(value=><option key={value} value={value}/>)}</datalist></>}
     </label>
     <label>Department
-      <input list={`${prefix}-departments`} value={department} maxLength={80} autoComplete="off" placeholder="Search or enter department" onChange={event=>onChange(faculty,event.target.value)}/>
-      <datalist id={`${prefix}-departments`}>{choices.map(value=><option key={value} value={value}/>)}</datalist>
+      {verified?<select disabled={!faculty} value={department} onChange={event=>onChange(faculty,event.target.value)}>
+        <option value="">Select department</option>{department&&!officialDepartments.includes(department)&&<option value={department}>{department} (previous)</option>}
+        {officialDepartments.map(value=><option key={value} value={value}>{value}</option>)}
+      </select>:<><input disabled={!ready} list={`${prefix}-departments`} value={department} maxLength={80} autoComplete="off" placeholder={ready?'Search or enter department':'Loading…'} onChange={event=>onChange(faculty,event.target.value)}/>
+      <datalist id={`${prefix}-departments`}>{choices.map(value=><option key={value} value={value}/>)}</datalist></>}
     </label>
-    <small className="academic-note">Suggestions are nationwide; faculty names differ across institutions.</small>
+    <small className="academic-note">{verified?'Matched to your selected institution.':ready?'Nationwide suggestions — school-specific names are not yet verified.':''}</small>
   </div>;
 }

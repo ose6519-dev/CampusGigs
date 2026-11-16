@@ -8,6 +8,8 @@ export type ProfileRecord = {
   bio: string;
   campus: string;
   city: string;
+  state_name: string;
+  institution_id: string | null;
   faculty: string;
   department: string;
   directory_preference: 'default' | 'public' | 'private';

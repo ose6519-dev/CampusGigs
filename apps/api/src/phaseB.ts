@@ -3,6 +3,7 @@ import { InputError } from './validation.ts';
 import { parseGig, parseModeration, parseProviderApplication, parseReview } from './providerValidation.ts';
 import { parsePublicGigFilters, publicGigQuery, publicGigWhere } from './publicGigs.ts';
 import { findInstitution, likeTerm, onlineExpression, parseScope, publicProviderIdPattern } from './institutions.ts';
+import { publicAcademicCatalog } from './academicCatalog.ts';
 
 type JsonHandler = (data: unknown, status?: number) => Response;
 type Context = {
@@ -107,9 +108,20 @@ export async function phaseB(context: Context): Promise<Response | null> {
     const filters = parseScope(url.searchParams, ['q','state','limit']);
     const query = `SELECT id,name,state_name,institution_type,aliases FROM institutions
       WHERE (?='' OR state_name=?) AND (?='' OR name LIKE ? ESCAPE '\\' OR aliases LIKE ? ESCAPE '\\')
-      ORDER BY CASE WHEN lower(name)=lower(?) THEN 0 WHEN lower(aliases)=lower(?) THEN 1 ELSE 2 END,name LIMIT ?`;
-    const rows = await env.DB.prepare(query).bind(filters.state,filters.state,filters.q,likeTerm(filters.q),likeTerm(filters.q),filters.q,filters.q,filters.limit).all();
+      ORDER BY CASE
+        WHEN lower(name)=lower(?) THEN 0
+        WHEN instr(' ' || lower(aliases) || ' ', ' ' || lower(?) || ' ')>0 THEN 1
+        WHEN lower(name) LIKE lower(?) ESCAPE '\\' THEN 2
+        ELSE 3 END,name LIMIT ?`;
+    const rows = await env.DB.prepare(query).bind(filters.state,filters.state,filters.q,likeTerm(filters.q),likeTerm(filters.q),filters.q,filters.q,`${filters.q.replace(/[\\%_]/g,'\\$&')}%`,filters.limit).all();
     return json({ institutions: rows.results || [] });
+  }
+
+  const academicMatch = path.match(/^\/v1\/public\/institutions\/([0-9a-f]{20})\/academics$/);
+  if (academicMatch && request.method === 'GET') {
+    if ([...url.searchParams.keys()].length) throw new InputError('Unknown academic filter');
+    const institution = await findInstitution(env, academicMatch[1]);
+    return json({ institutionId: institution.id, institutionName: institution.name, ...publicAcademicCatalog(institution.id) });
   }
 
   if (path === '/v1/public/providers' && request.method === 'GET') {
