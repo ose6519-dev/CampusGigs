@@ -3019,7 +3019,7 @@ async function chats(context) {
       p.cg_username AS other_username,COALESCE(pp.public_id,p.member_public_id) AS other_public_id,
       CASE WHEN pp.public_id IS NOT NULL THEN 'provider' ELSE p.user_kind END AS other_kind,
       COALESCE(p.show_online,0) AS other_online,
-      m.body AS last_body,m.kind AS last_kind,m.upload_id AS last_upload_id,m.mime_type AS last_mime_type,\n      m.created_at AS last_at,m.cipher_version AS last_cipher_version,
+      m.body AS last_body,m.kind AS last_kind,m.upload_id AS last_upload_id,\n      m.created_at AS last_at,m.cipher_version AS last_cipher_version,
       m.client_id AS last_client_id,m.sender_uid AS last_sender_uid,
       EXISTS(SELECT 1 FROM chat_security s WHERE s.booking_id=b.id) AS secure,
       (SELECT COUNT(*) FROM chat_messages unread WHERE unread.booking_id=b.id
