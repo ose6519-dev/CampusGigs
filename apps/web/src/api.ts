@@ -56,8 +56,8 @@ export type PublicPeoplePage = {people:PublicPerson[]};
 export type PublicPersonDetail = {person:PublicPerson;gigs:PublicGig[]};
 export type CommunityFollowingResponse = {following:(Pick<PublicPerson,'public_id'|'display_name'|'avatar_url'|'campus'|'state_name'|'online'|'kind'>)[]};
 export type FollowingResponse = {following:Pick<PublicProvider,'public_id'|'display_name'|'avatar_url'|'campus'|'state_name'|'online'>[]};
-export type InboxNotification = {id:string;kind:'follow'|'booking_requested'|'booking_accepted'|'booking_declined'|'booking_cancelled'|'provider_review';title:string;body:string;target_path:string;is_read:0|1;created_at:string};
-export type NotificationInbox = {notifications:InboxNotification[];unreadCount:number};
+export type InboxNotification = {id:string;kind:'follow'|'booking_requested'|'booking_accepted'|'booking_declined'|'booking_cancelled'|'provider_review';title:string;body:string;target_path:string;is_read:0|1;created_at:string;archived_at:string|null};
+export type NotificationInbox = {notifications:InboxNotification[];unreadCount:number;archivedCount:number};
 export type BookingStatus = 'requested' | 'accepted' | 'declined' | 'cancelled';
 export type BookingSummary = {
   id: string; gig_id: string; service_title: string; service_category: string;

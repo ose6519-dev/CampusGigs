@@ -11,7 +11,7 @@ import { serviceSearchWords } from '../src/publicGigs.ts';
 function fixture(){
   const db=new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys=ON');
-  for(const file of ['0001_profiles.sql','0002_providers_gigs.sql','0003_bookings.sql','0004_member_onboarding.sql','0005_campus_social.sql','0006_institution_directory.sql','0007_phase_g_notifications.sql','0010_phase_j_search.sql'])
+  for(const file of ['0001_profiles.sql','0002_providers_gigs.sql','0003_bookings.sql','0004_member_onboarding.sql','0005_campus_social.sql','0006_institution_directory.sql','0007_phase_g_notifications.sql','0010_phase_j_search.sql','0012_phase_m_notifications.sql'])
     db.exec(readFileSync(new URL(`../migrations/${file}`,import.meta.url),'utf8'));
   const bayelsa=db.prepare("SELECT id,name FROM institutions WHERE state_name='Bayelsa' AND aliases LIKE '%NDU%' LIMIT 1").get();
   const lagos=db.prepare("SELECT id,name FROM institutions WHERE state_name='Lagos' AND aliases LIKE '%UNILAG%' LIMIT 1").get();
@@ -154,6 +154,44 @@ test('Phase G inbox isolates users, deduplicates follows and reports booking act
   db.prepare("UPDATE provider_applications SET status='pending' WHERE id='app-bay'").run();
   db.prepare(`UPDATE provider_applications SET status='changes_requested',reviewed_by_uid='buyer',review_note='Upload a clearer ID photo.' WHERE id='app-bay'`).run();
   assert.equal((await request('/v1/me/notifications',{user:'bay'})).body.notifications[0].kind,'provider_review');
+  db.close();
+});
+
+test('Phase M notification filters, private reversible archive and unread totals',async()=>{
+  const {db,request}=fixture();
+  const publicId=db.prepare("SELECT public_id FROM provider_profiles WHERE firebase_uid='bay'").get().public_id;
+  await request(`/v1/me/follows/${publicId}`,{method:'PUT',user:'buyer'});
+  const first=await request('/v1/me/notifications',{user:'bay'});
+  const id=first.body.notifications[0].id;
+  assert.equal(first.body.unreadCount,1);
+  assert.equal(first.body.archivedCount,0);
+  assert.equal((await request('/v1/me/notifications?filter=unread',{user:'bay'})).body.notifications.length,1);
+  assert.equal((await request('/v1/me/notifications?filter=archived',{user:'bay'})).body.notifications.length,0);
+  assert.equal((await request('/v1/me/notifications?filter=invalid',{user:'bay'})).status,400);
+  assert.equal((await request('/v1/me/notifications?filter=unread&filter=all',{user:'bay'})).status,400);
+  assert.equal((await request('/v1/me/notifications?scope=everyone',{user:'bay'})).status,400);
+  assert.equal((await request(`/v1/me/notifications/${id}/archive`,{method:'POST',user:'lag'})).status,404);
+  assert.equal((await request(`/v1/me/notifications/${id}/restore`,{method:'POST',user:'lag'})).status,404);
+  assert.equal((await request(`/v1/me/notifications/${id}/archive`,{method:'POST',user:'bay'})).body.archived,true);
+  assert.equal((await request(`/v1/me/notifications/${id}/archive`,{method:'POST',user:'bay'})).status,200,'archive is idempotent');
+  const archived=await request('/v1/me/notifications?filter=archived',{user:'bay'});
+  assert.equal(archived.body.archivedCount,1);
+  assert.equal(archived.body.unreadCount,0,'archived unread must not appear in badge');
+  assert.equal(archived.body.notifications[0].id,id);
+  assert.equal((await request('/v1/me/notifications',{user:'bay'})).body.notifications.length,0);
+  assert.equal((await request(`/v1/me/notifications/${id}/read`,{method:'POST',user:'bay'})).status,409);
+  assert.equal((await request('/v1/me/notifications/read-all',{method:'POST',user:'bay'})).body.changed,0);
+  assert.equal((await request(`/v1/me/notifications/${id}/restore`,{method:'POST',user:'bay'})).body.archived,false);
+  assert.equal((await request(`/v1/me/notifications/${id}/restore`,{method:'POST',user:'bay'})).status,200,'restore is idempotent');
+  assert.equal((await request('/v1/me/notifications?filter=unread',{user:'bay'})).body.unreadCount,1);
+  await request(`/v1/me/notifications/${id}/archive`,{method:'POST',user:'bay'});
+  await request(`/v1/me/follows/${publicId}`,{method:'DELETE',user:'buyer'});
+  await request(`/v1/me/follows/${publicId}`,{method:'PUT',user:'buyer'});
+  const resurfaced=await request('/v1/me/notifications',{user:'bay'});
+  assert.equal(resurfaced.body.notifications.length,1);
+  assert.equal(resurfaced.body.notifications[0].id,id,'repeat follow reuses unique event');
+  assert.equal(resurfaced.body.archivedCount,0);
+  assert.equal(resurfaced.body.unreadCount,1);
   db.close();
 });
 
