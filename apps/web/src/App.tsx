@@ -5,6 +5,7 @@ import {
   getRedirectResult,
   onAuthStateChanged,
   sendEmailVerification,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
@@ -16,6 +17,25 @@ import { ProviderWorkspace } from './ProviderWorkspace';
 import { BrowseGigs, FeaturedGigs } from './BrowseGigs';
 import { GigDetail } from './GigDetail';
 import { BookingWorkspace } from './BookingWorkspace';
+import { WelcomeSetup } from './WelcomeSetup';
+
+function authMessage(error:unknown):string {
+  const code=(error as {code?:string})?.code;
+  switch(code){
+    case 'auth/email-already-in-use':return 'An account already uses this email. Sign in or reset your password.';
+    case 'auth/invalid-email':return 'That email address does not look right.';
+    case 'auth/weak-password':return 'Choose a stronger password with at least 8 characters.';
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':return 'The email or password is incorrect. You can reset your password below.';
+    case 'auth/operation-not-allowed':return 'Email/password sign-in is disabled in Firebase. Enable Email/Password in Authentication → Sign-in method.';
+    case 'auth/too-many-requests':return 'Too many attempts. Please wait and try again.';
+    case 'auth/network-request-failed':return 'Connection lost. Check your network and retry.';
+    case 'auth/unauthorized-domain':return 'This website domain needs to be authorised in Firebase Authentication.';
+    case 'auth/missing-password':return 'Please enter your password.';
+    default:return 'Authentication could not finish. Please try again.';
+  }
+}
 
 type View = 'explore' | 'categories' | 'detail' | 'bookings' | 'provider' | 'profile';
 
@@ -51,17 +71,24 @@ function App() {
   const { view } = route;
   const [user, setUser] = useState<User | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
+  const [profileReady,setProfileReady]=useState(false);
   const [providerVerified, setProviderVerified] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [authError,setAuthError]=useState('');
+  const [showPassword,setShowPassword]=useState(false);
+  const [verificationTick,setVerificationTick]=useState(0);
+  const [verificationBusy,setVerificationBusy]=useState(false);
+  const [editingSetup,setEditingSetup]=useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const [form, setForm] = useState({ displayName: '', campus: '', city: '', bio: '' });
 
   const refreshProfile = useCallback(async (currentUser: User) => {
+    setProfileReady(false);
     try {
       const response = await apiRequest<MeResponse>(currentUser, '/v1/me');
       setMe(response);
@@ -71,12 +98,14 @@ function App() {
         city: response.profile.city,
         bio: response.profile.bio,
       });
-      const status = await apiRequest<ProviderStatus>(currentUser, '/v1/provider');
-      setProviderVerified(status.verified);
+      try {
+        const status = await apiRequest<ProviderStatus>(currentUser, '/v1/provider');
+        setProviderVerified(status.verified);
+      } catch { setProviderVerified(false); }
     } catch (error) {
       setMe(null);
       setNotice(error instanceof Error ? error.message : 'Unable to load profile');
-    }
+    } finally {setProfileReady(true);}
   }, []);
 
   useEffect(() => {
@@ -84,6 +113,7 @@ function App() {
     const unsubscribe = onAuthStateChanged(firebaseAuth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
+      setProfileReady(!currentUser);
       if (currentUser) {
         setAuthOpen(false);
         void refreshProfile(currentUser);
@@ -123,6 +153,7 @@ function App() {
   }, [authOpen]);
 
   function goTo(next: View) {
+    setEditingSetup(false);
     const path = ({ explore: '/', categories: '/gigs', bookings: '/bookings', provider: '/provide', profile: '/profile', detail: '/' } as Record<View, string>)[next];
     window.history.pushState(null, '', path);
     setRoute({ view: next, gigId: '', category: '' });
@@ -164,20 +195,55 @@ function App() {
     event.preventDefault();
     if (!firebaseAuth) return setNotice('Firebase is not configured yet.');
     setLoading(true);
+    setAuthError('');
     try {
       if (registering) {
         const credential = await createUserWithEmailAndPassword(firebaseAuth, authEmail.trim(), authPassword);
-        await sendEmailVerification(credential.user);
-        setNotice('Account created! Check your email to verify it.');
+        let sent = true;
+        try { await sendEmailVerification(credential.user); }
+        catch { sent = false; }
+        setNotice(sent?'Account created. Check your inbox for the verification link.':'Account created. Use Resend email on the verification screen.');
       } else {
         await signInWithEmailAndPassword(firebaseAuth, authEmail.trim(), authPassword);
         setNotice('Signed in successfully.');
       }
       setAuthOpen(false);
       setAuthPassword('');
-    } catch {
-      setNotice('Could not sign in. Check the email and password, then try again.');
+    } catch (error) {
+      const message=authMessage(error);
+      setAuthError(message);
+      setNotice(message);
     } finally { setLoading(false); }
+  }
+
+  async function resetPassword(){
+    if(!firebaseAuth)return;
+    if(!authEmail.trim()){setAuthError('Enter your email address first.');return;}
+    setLoading(true);setAuthError('');
+    try {await sendPasswordResetEmail(firebaseAuth,authEmail.trim());setNotice('If this email has an account, a reset link will arrive shortly.');}
+    catch(error){setAuthError(authMessage(error));}
+    finally{setLoading(false);}
+  }
+
+  async function resendVerification(){
+    if(!user)return;
+    setVerificationBusy(true);
+    try{await sendEmailVerification(user);setNotice('Verification email sent. Check your inbox and spam folder.');}
+    catch(error){setNotice(authMessage(error));}
+    finally{setVerificationBusy(false);}
+  }
+
+  async function verifyEmailNow(){
+    if(!user)return;
+    setVerificationBusy(true);
+    try{
+      await user.reload();
+      await user.getIdToken(true);
+      setVerificationTick(value=>value+1);
+      if(user.emailVerified){await refreshProfile(user);setNotice('Email verified successfully.');}
+      else setNotice('Your email is not verified yet. Open the email link and try again.');
+    }catch(error){setNotice(authMessage(error));}
+    finally{setVerificationBusy(false);}
   }
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
@@ -268,13 +334,29 @@ function App() {
         {view === 'provider' && <ProviderWorkspace user={user} location={me?.profile.campus || me?.profile.city || ''} notice={setNotice} onLogin={() => setAuthOpen(true)} onApproved={setProviderVerified}/>}
 
         {view === 'profile' && <section className="section-wrap page-section profile-page"><span className="eyebrow">YOUR CAMPUSGIGS SPACE</span><h1 className="page-title">Your space, <em>your way.</em></h1>{!user ? <div className="profile-empty"><div className="empty-icon">◉</div><h2>You're one step away.</h2><p>Sign in with the same Firebase account you use on CampSell.</p><button className="button button-dark" onClick={() => setAuthOpen(true)}>Sign in to continue <span>→</span></button></div> : <div className="profile-layout"><div className="profile-summary"><div className="profile-avatar">{user.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" /> : user.displayName?.slice(0, 1).toUpperCase() || 'C'}</div><h2>{me?.profile.display_name || user.displayName || 'CampusGigs member'}</h2><p>{user.email}</p><span className="status-badge">{providerVerified ? '✦ Verified gig provider' : me?.role === 'admin' ? '✦ Administrator' : '● CampusGigs member'}</span><div className="mode-box"><span>Current mode</span><strong>{me?.profile.active_mode === 'providing' ? 'Providing' : 'Buying'}</strong><button onClick={() => void switchMode()} disabled={!me}>Switch to {me?.profile.active_mode === 'providing' ? 'Buying' : 'Providing'} ↗</button><small>Provider publishing requires admin verification.</small><button className="studio-shortcut" type="button" onClick={() => goTo('provider')}>↗ Open provider studio</button></div><button className="signout-button" onClick={() => firebaseAuth && void signOut(firebaseAuth)}>Sign out ↗</button></div><form className="profile-form" onSubmit={saveProfile}><div className="form-heading"><div><span className="eyebrow">PERSONAL DETAILS</span><h2>Edit your profile</h2></div><span className="tiny-lock">Private to your account</span></div><label>Display name<input required minLength={2} maxLength={60} value={form.displayName} onChange={(event) => setForm({ ...form, displayName: event.target.value })} /></label><div className="field-row"><label>Campus / School<input maxLength={100} placeholder="e.g. Niger Delta University" value={form.campus} onChange={(event) => setForm({ ...form, campus: event.target.value })} /></label><label>City<input maxLength={100} placeholder="e.g. Yenagoa" value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} /></label></div><label>About you<textarea maxLength={480} rows={4} placeholder="A short introduction..." value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} /></label><button className="button button-dark save-button" type="submit" disabled={saving || !me}>{saving ? 'Saving…' : 'Save changes'} <span>↗</span></button></form></div>}</section>}
+        {view === 'profile' && user && me && !!me.profile.onboarding_completed && <section className="section-wrap profile-personalization"><div><span className="eyebrow">PERSONALISED FOR YOU</span><h2>Your interests.</h2><p>{me.profile.student_status==='student'?`Student · ${me.profile.campus||'School not added'}`:'CampusGigs community'} · {me.profile.user_kind==='both'?'Hiring & offering':me.profile.user_kind==='provider'?'Offering skills':'Finding services'}</p><div className="profile-interests-list">{(() => {try{return (JSON.parse(me.profile.interests_json) as string[]).map(item=><span key={item}>{item}</span>);}catch{return [];}})()}</div></div><button type="button" className="button button-ghost" onClick={()=>setEditingSetup(true)}>Edit interests <span>↗</span></button></section>}
       </main>
 
       <footer className="site-footer"><div className="section-wrap footer-content"><span className="footer-brand">Campus<span>Gigs.</span></span><p>Built for talent. Made for Nigeria.</p><div><a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer">CampSell ↗</a><span>© {new Date().getFullYear()} CampusGigs</span></div></div></footer>
-      <nav className="mobile-nav" aria-label="CampusGigs bottom navigation"><button className={view === 'explore' ? 'active' : ''} aria-current={view === 'explore' ? 'page' : undefined} onClick={() => goTo('explore')}><Icon>⌂</Icon><small>Explore</small></button><button className={view === 'categories' || view === 'detail' ? 'active' : ''} aria-current={view === 'categories' || view === 'detail' ? 'page' : undefined} onClick={() => goTo('categories')}><Icon>⌕</Icon><small>Gigs</small></button><button className={view === 'bookings' ? 'active' : ''} aria-current={view === 'bookings' ? 'page' : undefined} onClick={() => goTo('bookings')}><Icon>◷</Icon><small>Bookings</small></button><button className={view === 'provider' ? 'active' : ''} aria-current={view === 'provider' ? 'page' : undefined} onClick={() => goTo('provider')}><Icon>✦</Icon><small>Provide</small></button><button className={view === 'profile' ? 'active' : ''} aria-current={view === 'profile' ? 'page' : undefined} onClick={() => goTo('profile')}><Icon>◉</Icon><small>Profile</small></button><a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer" aria-label="Shop products on CampSell"><Icon>↗</Icon><small>CampSell</small></a></nav>
+      <nav className="mobile-nav" aria-label="CampusGigs bottom navigation"><button className={view === 'explore' ? 'active' : ''} aria-current={view === 'explore' ? 'page' : undefined} onClick={() => goTo('explore')}><Icon>⌂</Icon><small>Explore</small></button><button className={view === 'categories' || view === 'detail' ? 'active' : ''} aria-current={view === 'categories' || view === 'detail' ? 'page' : undefined} onClick={() => goTo('categories')}><Icon>⌕</Icon><small>Gigs</small></button><button className={view === 'bookings' ? 'active' : ''} aria-current={view === 'bookings' ? 'page' : undefined} onClick={() => goTo('bookings')}><Icon>◷</Icon><small>Bookings</small></button><button className={view === 'provider' ? 'active' : ''} aria-current={view === 'provider' ? 'page' : undefined} onClick={() => goTo('provider')}><Icon>✦</Icon><small>Provide</small></button><button className={view === 'profile' ? 'active' : ''} aria-current={view === 'profile' ? 'page' : undefined} onClick={() => goTo('profile')}><Icon>◉</Icon><small>Profile</small></button></nav>
 
       {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss">×</button></div>}
-      {authOpen && <div className="modal-layer" onMouseDown={(event) => { if (event.target === event.currentTarget) setAuthOpen(false); }}><div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className="modal-close" onClick={() => setAuthOpen(false)} aria-label="Close">×</button><div className="modal-logo">CG</div><span className="eyebrow">HELLO, CAMPUSGIGS!</span><h2 id="auth-title">{registering ? 'Create your account' : 'Welcome back.'}</h2><p>One account for CampSell and CampusGigs.</p>{!firebaseReady && <div className="auth-warning">Firebase configuration is still required before sign-in can work.</div>}<button className="google-btn" onClick={() => void googleLogin()} disabled={loading || !firebaseReady}><span>G</span> Continue with Google</button><div className="auth-divider"><span>OR USE EMAIL</span></div><form onSubmit={emailLogin}><label>Email address<input type="email" required autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="you@example.com" /></label><label>Password<input type="password" required minLength={6} autoComplete={registering ? 'new-password' : 'current-password'} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="At least 6 characters" /></label><button className="button button-dark auth-submit" type="submit" disabled={loading || !firebaseReady}>{loading ? 'Please wait…' : registering ? 'Create account' : 'Sign in'} <span>→</span></button></form><p className="auth-switch">{registering ? 'Already have an account?' : 'New around here?'} <button onClick={() => setRegistering(!registering)}>{registering ? 'Sign in' : 'Create account'}</button></p></div></div>}
+      {authOpen && <div className="modal-layer" onMouseDown={(event) => { if (event.target === event.currentTarget) setAuthOpen(false); }}><div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+        <button className="modal-close" onClick={() => setAuthOpen(false)} aria-label="Close">×</button><div className="modal-logo">CG</div><span className="eyebrow">HELLO, CAMPUSGIGS!</span><h2 id="auth-title">{registering ? 'Join CampusGigs.' : 'Welcome back.'}</h2><p>{registering?'Start with your email, then complete your profile.':'Your skills. Your community. Your account.'}</p>
+        {!firebaseReady && <div className="auth-warning">Firebase configuration is required before sign-in can work.</div>}
+        <button className="google-btn" type="button" onClick={() => void googleLogin()} disabled={loading || !firebaseReady}><span>G</span> Continue with Google</button><div className="auth-divider"><span>OR USE EMAIL</span></div>
+        <form onSubmit={emailLogin}><label>Email address<input type="email" required autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="you@example.com" /></label>
+          <label>Password<div className="auth-password-field"><input type={showPassword?'text':'password'} required minLength={registering?8:6} autoComplete={registering ? 'new-password' : 'current-password'} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder={registering?'8+ characters':'Your password'} /><button type="button" onClick={()=>setShowPassword(!showPassword)} aria-label={showPassword?'Hide password':'Show password'}>{showPassword?'Hide':'Show'}</button></div></label>
+          {authError && <p className="auth-inline-error" role="alert">{authError}</p>}
+          <button className="button button-dark auth-submit" type="submit" disabled={loading || !firebaseReady}>{loading ? 'Please wait…' : registering ? 'Create account' : 'Sign in'} <span>→</span></button>
+        </form>{!registering&&<button type="button" className="auth-forgot" disabled={loading} onClick={()=>void resetPassword()}>Forgot your password?</button>}
+        <p className="auth-switch">{registering ? 'Already have an account?' : 'New around here?'} <button type="button" onClick={() => {setRegistering(!registering);setAuthError('');}}>{registering ? 'Sign in' : 'Create account'}</button></p>
+      </div></div>}
+
+      {user && !user.emailVerified && <div key={verificationTick} className="email-verify-gate" role="dialog" aria-modal="true" aria-labelledby="verify-title"><div className="email-verify-card"><span className="verify-art">✉</span><span className="eyebrow">ONE QUICK CHECK</span><h2 id="verify-title">Verify your <em>email.</em></h2><p>We sent a secure verification link to <strong>{user.email}</strong>. Open it, then return here.</p><button className="button button-dark" disabled={verificationBusy} onClick={()=>void verifyEmailNow()}>{verificationBusy?'Checking…':"I've verified my email"} <span>✓</span></button><button className="verify-resend" disabled={verificationBusy} onClick={()=>void resendVerification()}>Resend verification email</button><button className="verify-signout" onClick={()=>firebaseAuth&&void signOut(firebaseAuth)}>Use another account</button><small>This is a one-time email verification link, not a numeric OTP.</small></div></div>}
+
+      {user?.emailVerified && me && (me.profile.onboarding_completed === 0 || editingSetup) && <WelcomeSetup user={user} profile={me.profile} notice={setNotice} onDone={async()=>{await refreshProfile(user);goTo(me.profile.onboarding_completed?'profile':'explore');}} onSignOut={()=>firebaseAuth&&void signOut(firebaseAuth)}/>}
+      {!profileReady && firebaseReady && <div className="session-loading" role="status"><span className="session-mark">CG</span><strong>Preparing your space…</strong></div>}
     </div>
   );
 }

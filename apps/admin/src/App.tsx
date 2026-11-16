@@ -204,14 +204,6 @@ function App() {
         <footer className="page-footer">© {new Date().getFullYear()} CampusGigs Admin <span>·</span> Independent platform operations <span>·</span> <a href="https://campusgigs-97y.pages.dev/">Marketplace ↗</a></footer>
       </main>
     </div>
-    <nav className="admin-mobile-nav" aria-label="Mobile admin navigation">
-      <button type="button" className={view === 'overview' ? 'active' : ''} aria-current={view === 'overview' ? 'page' : undefined} onClick={() => selectView('overview')}><span aria-hidden="true">▦</span><small>Home</small></button>
-      <button type="button" className={view === 'members' ? 'active' : ''} aria-current={view === 'members' ? 'page' : undefined} onClick={() => selectView('members')}><span aria-hidden="true">◉</span><small>Members</small></button>
-      <button type="button" className={view === 'providers' ? 'active' : ''} aria-current={view === 'providers' ? 'page' : undefined} onClick={() => selectView('providers')}><span aria-hidden="true">✺</span><small>Providers</small></button>
-      <button type="button" className={view === 'bookings' ? 'active' : ''} aria-current={view === 'bookings' ? 'page' : undefined} onClick={() => selectView('bookings')}><span aria-hidden="true">◷</span><small>Bookings</small></button>
-      <button type="button" className={`admin-dock-gigs ${view === 'gigs' ? 'active' : ''}`} aria-current={view === 'gigs' ? 'page' : undefined} onClick={() => selectView('gigs')}><span aria-hidden="true">▣</span><small>Gigs</small></button>
-      <button type="button" className={`admin-dock-menu ${navOpen ? 'active' : ''}`} aria-expanded={navOpen} aria-label="More admin sections" onClick={() => setNavOpen(true)}><span aria-hidden="true">☰</span><small>Menu</small></button>
-    </nav>
   </div>;
 }
 

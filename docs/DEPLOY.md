@@ -24,7 +24,7 @@ The above D1 and R2 already exist under the chosen account; **do not recreate or
 
 `apps/api/cloudflare.config.ts` already binds these CampusGigs resources and uses Firebase project ID `campsell-ea245` and origin `https://campusgigs-97y.pages.dev`. Keep `DB`, `MEDIA`, `FIREBASE_PROJECT_ID`, `WEB_ORIGINS` unchanged.
 
-Migration `apps/api/migrations/0001_profiles.sql` initializes profiles, roles and rate limits. Migration `0002_providers_gigs.sql` adds provider applications, approvals, badges, gigs, images and admin events. Phase D migration `0003_bookings.sql` adds service requests and booking-event audit trails. Apply migrations in number order **only** to the independent CampusGigs D1 database before updating the Worker; never touch CampSell D1.
+Migration `apps/api/migrations/0001_profiles.sql` initializes profiles, roles and rate limits. Migration `0002_providers_gigs.sql` adds provider applications, approvals, badges, gigs, images and admin events. Phase D migration `0003_bookings.sql` adds service requests and booking-event audit trails. Migration `0004_member_onboarding.sql` adds first-time profile preferences and marks existing profiles as already onboarded. Apply migrations in number order **only** to the independent CampusGigs D1 database before updating the Worker; never touch CampSell D1.
 
 ## Firebase login setup
 
@@ -63,7 +63,8 @@ The Worker is already deployed. Do not use `cf deploy --temporary-account`, whic
 - A verified provider can create a gig and attach up to four images. Admin removal hides it from public listing and image endpoints.
 - A signed-in verified customer can request a gig once per request ID; the provider sees it under Incoming requests and can accept or decline, and the buyer can cancel.
 - Booking history is private to the buyer/provider, and the admin can read service requests but cannot forge provider acceptance.
-- Both frontend sites have compact bottom navigation on phone and desktop; full-size desktop navigation remains available.
+- The public marketplace has curved bottom navigation on phone and a smaller floating dock on desktop. The separate admin site intentionally has **no** bottom navigation and keeps its sidebar/hamburger.
+- Email/password depends on Firebase Authentication → Sign-in method → Email/Password being enabled; frontend builds cannot activate the provider themselves. Verification is a link, not a numeric OTP.
 - Paystack checkout, seller payouts and FacePay remain disabled until financial/security readiness is confirmed.
 - Login on CampSell remains unchanged; no CampSell database or Worker is read or written.
 - The CampusGigs website links to CampSell; reciprocal CampSell link will be prepared separately, with explicit approval before any CampSell change.

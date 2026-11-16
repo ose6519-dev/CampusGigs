@@ -9,6 +9,11 @@ export type Profile = {
   campus: string;
   city: string;
   active_mode: 'buying' | 'providing';
+  onboarding_completed: 0 | 1;
+  user_kind: 'buyer' | 'provider' | 'both';
+  age_range: '' | 'under_18' | '18_24' | '25_34' | '35_44' | '45_plus';
+  student_status: '' | 'student' | 'non_student';
+  interests_json: string;
   account_status: string;
   created_at: string;
 };

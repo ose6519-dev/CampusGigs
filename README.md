@@ -20,10 +20,13 @@ Phases A–D include:
 - Refresh-safe, shareable `/gigs` and `/gigs/:id` links, polished two-column phone cards and native-feeling Android/iOS layouts.
 - Compact Android/iOS-style bottom navigation and bold typography on both sites.
 - **Desktop floating bottom navigator** on the marketplace and admin dashboard, with the full desktop sidebar/header still available.
+- **Current UI revision:** the floating dock now belongs to the public marketplace only. Desktop's duplicate top links are hidden, and the dock is smaller with five balanced tabs and a curved, emphasized center button. Admin uses its existing sidebar and mobile menu without a bottom dock.
+- **First-time member setup:** after Firebase email verification, new members choose how they use CampusGigs, select interests, and provide an age group, student status, school (if applicable), city and display name. Existing accounts keep their current experience.
+- Improved email/password error messages, password reset, show/hide password, verification-email resend and explicit confirmation before entering the new-user setup. Firebase email verification uses a one-time **link**, not a numeric OTP.
 - **Phase D service booking requests** with customer briefs, frozen service-price snapshots, idempotent request IDs, separate incoming provider requests, provider accept/decline, buyer cancellation, request history and auditable status changes.
 - **Admin booking operations**: request counts, status filters, searching by buyer, service, email or ID, and read-only request details.
 - Protected booking endpoints that only expose customer/provider records to the relevant Firebase UID; provider responses require active verified provider authorization.
-- Tests for search input, SQL wildcard escaping, data visibility, auth rejection and all three SQL migrations.
+- Tests for search input, SQL wildcard escaping, data visibility, auth rejection and all four SQL migrations.
 - Phase D tests for booking validation, idempotence, actor authorization, status transition limits and schema audit triggers.
 
 **Not yet implemented:** Paystack collection, escrow, payouts, FacePay identity checks, reviews, disputes and notifications. They require separate financial/security readiness. **Phase D only sends booking requests; no live payment can be charged.**
@@ -38,12 +41,14 @@ CampusGigs/
 │   │   ├── migrations/0001_profiles.sql
 │   │   ├── migrations/0002_providers_gigs.sql
 │   │   ├── migrations/0003_bookings.sql
+│   │   ├── migrations/0004_member_onboarding.sql
 │   │   ├── src/auth.ts               # Verified Firebase JWT
 │   │   ├── src/index.ts              # Authorized API endpoints
 │   │   ├── src/phaseB.ts             # Provider workflows, R2 and gigs
 │   │   ├── src/publicGigs.ts         # Parameterized discovery query and validation
 │   │   ├── src/bookings.ts           # Scoped, auditable booking requests and admin read view
 │   │   ├── src/bookingValidation.ts  # Strict request IDs and status input
+│   │   ├── src/onboardingValidation.ts # Validated member setup data
 │   │   ├── src/providerValidation.ts # Strict provider/gig input checks
 │   │   ├── src/validation.ts         # Input constraints
 │   │   └── tests/phase-a.test.mjs
@@ -54,6 +59,8 @@ CampusGigs/
 │       ├── src/BrowseGigs.tsx        # Search, filters, real gig cards
 │       ├── src/GigDetail.tsx         # Gallery, provider and price details
 │       ├── src/BookingWorkspace.tsx  # Buyer/provider request dashboard
+│       ├── src/WelcomeSetup.tsx      # Three-step first-time experience
+│       ├── src/phase-e.css           # Native mobile/desktop dock and auth UX
 │       ├── src/firebase.ts           # Client-side Firebase login
 │       ├── src/api.ts                # Bearer token API calls
 │       └── src/styles.css
@@ -99,7 +106,7 @@ See [docs/ADMIN.md](docs/ADMIN.md) for the separate admin dashboard hosting and 
 | `PATCH` | `/v1/me` | Firebase ID token | Edit allowed profile fields |
 | `PATCH` | `/v1/me/mode` | Firebase ID token | Set buying/providing display preference |
 
-Only the verified Firebase UID determines profile ownership. Clients cannot set account status, UID or administrative roles. `providing` mode alone gives **no** provider privileges: publishing requires a distinct approved `provider_profiles` row.
+Only the verified Firebase UID determines profile ownership. Clients cannot set account status, UID or administrative roles. `providing` mode alone gives **no** provider privileges: publishing requires a distinct approved `provider_profiles` row. New identities must complete welcome setup before accessing member services.
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
@@ -117,6 +124,7 @@ Only the verified Firebase UID determines profile ownership. Clients cannot set 
 | `POST` | `/v1/admin/providers/:id/review` | D1 admin | Approve/reject/request changes |
 | `GET` | `/v1/admin/gigs` | D1 admin | Moderate all gigs |
 | `POST` | `/v1/admin/gigs/:id/moderate` | D1 admin | Remove/restore listing |
+| `PATCH` | `/v1/me/onboarding` | Verified Firebase member | Save first-time interests, age group, school and mode |
 | `GET` | `/v1/bookings?role=buyer\|provider` | Firebase member | Own requests or incoming provider requests |
 | `POST` | `/v1/bookings` | Verified Firebase member | Request active approved gig; idempotent per buyer/request ID |
 | `GET` | `/v1/bookings/:id` | Buyer or provider only | Private details and status timeline |

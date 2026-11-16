@@ -4,6 +4,7 @@ import { InputError, parseMode, parseProfileUpdate } from './validation';
 import type { ProfileRecord } from './types';
 import { phaseB } from './phaseB';
 import { bookings, adminBookings } from './bookings';
+import { parseOnboarding } from './onboardingValidation';
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
@@ -153,6 +154,9 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   const profile = await ensureProfile(env, user.uid, user.emailVerified ? user.email : '', user.displayName, user.picture);
   if (profile.account_status !== 'active') return json({ error: 'Account suspended' }, 403);
+  if (!profile.onboarding_completed && path !== '/v1/me' && path !== '/v1/me/onboarding') {
+    return json({ error: 'Complete your CampusGigs welcome setup first' }, 403);
+  }
 
   const phaseBResponse = await phaseB({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false });
   if (phaseBResponse) return phaseBResponse;
@@ -164,6 +168,20 @@ async function route(request: Request, env: Env): Promise<Response> {
     const role = await env.DB.prepare('SELECT role FROM platform_roles WHERE firebase_uid = ?')
       .bind(user.uid).first<{ role: string }>();
     return json({ profile, role: role?.role || 'member', emailVerified: user.emailVerified });
+  }
+
+  if (path === '/v1/me/onboarding' && request.method === 'PATCH') {
+    if (!user.emailVerified) return json({ error: 'Verify your email before completing your setup' },403);
+    await checkWriteRateLimit(env,user.uid,'onboarding',6);
+    const value=parseOnboarding(await readBody(request));
+    await env.DB.prepare(`
+      UPDATE profiles SET onboarding_completed=1,user_kind=?,age_range=?,student_status=?,interests_json=?,
+        display_name=?,campus=?,city=?,active_mode=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      WHERE firebase_uid=? AND account_status='active'
+    `).bind(value.userKind,value.ageRange,value.studentStatus,JSON.stringify(value.interests),value.displayName,
+      value.studentStatus==='student'?value.school:'',value.city,
+      value.userKind==='provider'?'providing':'buying',user.uid).run();
+    return json({completed:true});
   }
 
   if (path === '/v1/me' && request.method === 'PATCH') {

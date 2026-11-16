@@ -9,6 +9,11 @@ export type ProfileRecord = {
   campus: string;
   city: string;
   active_mode: Mode;
+  onboarding_completed: 0 | 1;
+  user_kind: 'buyer' | 'provider' | 'both';
+  age_range: string;
+  student_status: 'student' | 'non_student' | '';
+  interests_json: string;
   account_status: 'active' | 'suspended';
   created_at: string;
   updated_at: string;

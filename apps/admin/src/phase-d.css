@@ -40,11 +40,11 @@
  .admin-mobile-nav button span{width:auto;height:auto;font-size:17px;line-height:1.1}
  .admin-mobile-nav button small{color:inherit;font-size:10px;font-weight:800}
  .admin-mobile-nav .admin-dock-menu{display:none}
- .content{padding-bottom:max(116px,env(safe-area-inset-bottom))}
 }
 @media(min-width:761px) and (max-width:1100px){.admin-mobile-nav{left:calc(224px + (100vw - 224px)/2);width:min(535px,calc(100% - 256px))}}
 @media(max-width:990px){.booking-admin-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.booking-admin-row{grid-template-columns:minmax(100px,1fr) minmax(130px,1fr) minmax(65px,.5fr) minmax(75px,.5fr);gap:11px}.booking-admin-row>span:last-child{display:none}}
 @media(max-width:760px){
+ .content{padding-bottom:calc(30px + env(safe-area-inset-bottom,0px))}
  .admin-mobile-nav .admin-dock-gigs{display:none}
  .booking-admin-stats{gap:10px;margin:15px 0}
  .booking-admin-stat{padding:15px;border-radius:15px}
