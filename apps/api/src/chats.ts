@@ -35,10 +35,12 @@ async function bookingFor(env:Env,uid:string,id:string):Promise<Booking|null>{
   if(!uuid.test(id))return null;
   return await env.DB.prepare(`SELECT b.id,b.buyer_uid,b.provider_uid,b.service_title,b.status,
     p.display_name AS other_name,p.avatar_url AS other_avatar,p.city AS other_city,p.state_name AS other_state,
-    p.cg_username AS other_username,p.member_public_id AS other_public_id,p.user_kind AS other_kind,
+    p.cg_username AS other_username,COALESCE(pp.public_id,p.member_public_id) AS other_public_id,
+    CASE WHEN pp.public_id IS NOT NULL THEN 'provider' ELSE p.user_kind END AS other_kind,
     COALESCE(p.show_online,0) AS other_online
     FROM service_bookings b JOIN profiles p
       ON p.firebase_uid=CASE WHEN b.buyer_uid=? THEN b.provider_uid ELSE b.buyer_uid END
+    LEFT JOIN provider_profiles pp ON pp.firebase_uid=p.firebase_uid AND pp.provider_status='active'
     WHERE b.id=? AND (b.buyer_uid=? OR b.provider_uid=?)`)
     .bind(uid,id,uid,uid).first<Booking>();
 }
@@ -70,8 +72,9 @@ export async function chats(context:Context):Promise<Response|null>{
   if(path==='/v1/me/chats'&&request.method==='GET'){
     const entries=await env.DB.prepare(`SELECT b.id AS booking_id,b.service_title,b.status,
       p.display_name AS other_name,p.avatar_url AS other_avatar,p.city AS other_city,p.state_name AS other_state,
-      p.cg_username AS other_username,p.member_public_id AS other_public_id,
-      p.user_kind AS other_kind,COALESCE(p.show_online,0) AS other_online,
+      p.cg_username AS other_username,COALESCE(pp.public_id,p.member_public_id) AS other_public_id,
+      CASE WHEN pp.public_id IS NOT NULL THEN 'provider' ELSE p.user_kind END AS other_kind,
+      COALESCE(p.show_online,0) AS other_online,
       m.body AS last_body,m.kind AS last_kind,m.created_at AS last_at,
       (SELECT COUNT(*) FROM chat_messages unread WHERE unread.booking_id=b.id
         AND unread.sender_uid<>? AND unread.created_at>COALESCE(
@@ -79,6 +82,7 @@ export async function chats(context:Context):Promise<Response|null>{
         AS unread_count
       FROM service_bookings b
       JOIN profiles p ON p.firebase_uid=CASE WHEN b.buyer_uid=? THEN b.provider_uid ELSE b.buyer_uid END
+      LEFT JOIN provider_profiles pp ON pp.firebase_uid=p.firebase_uid AND pp.provider_status='active'
       LEFT JOIN chat_messages m ON m.id=(SELECT id FROM chat_messages
         WHERE booking_id=b.id ORDER BY created_at DESC,id DESC LIMIT 1)
       WHERE b.buyer_uid=? OR b.provider_uid=?

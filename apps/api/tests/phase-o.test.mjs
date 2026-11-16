@@ -15,6 +15,7 @@ function fixture(){
   db.prepare(`INSERT INTO provider_applications(id,firebase_uid,skill_categories,location_name,location_kind,bio,evidence_type,evidence_key,status)
     VALUES (?,?,?,?,?,?,?,?,?)`).run('application','provider','["Design & Creative"]','NDU','campus','Brand services','student_id','private/evidence','approved');
   db.prepare('INSERT INTO provider_profiles(firebase_uid,application_id,approved_by_uid) VALUES (?,?,?)').run('provider','application','admin');
+  db.prepare('UPDATE provider_profiles SET public_id=? WHERE firebase_uid=?').run('0123456789abcdef0123456789abcdef','provider');
   const gigId=randomUUID(),bookingId=randomUUID();
   db.prepare(`INSERT INTO gigs(id,provider_uid,title,description,category,price_kobo,delivery_days,location_type,location_name,payment_option)
     VALUES (?,?,?,?,?,?,?,?,?,?)`).run(gigId,'provider','Logo design','A memorable and complete brand design for local businesses and campus entrepreneurs.','Design & Creative',500000,4,'online','NDU','preview');
@@ -50,6 +51,8 @@ test('Phase O chat isolation, message idempotency, replies and pagination',async
   assert.equal((await call(`/v1/chats/${id}`,{uid:'stranger'})).status,404);
   assert.equal((await call(`/v1/chats/${id}/messages`,{uid:'stranger'})).status,404);
   assert.equal((await call('/v1/me/chats')).body.chats.length,1);
+  assert.equal((await call('/v1/me/chats')).body.chats[0].other_kind,'provider');
+  assert.ok((await call('/v1/me/chats')).body.chats[0].other_public_id,'provider link opens the real public profile');
   const clientId=randomUUID();
   const message=(await call(`/v1/chats/${id}/messages`,{method:'POST',
     body:{clientId,kind:'text',text:'Hello, can we discuss the design brief?'}}));
