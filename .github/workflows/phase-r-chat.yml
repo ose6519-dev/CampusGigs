@@ -1,0 +1,24 @@
+name: Phase R chat regression checks
+on:
+  push:
+    branches: [phase-r-chat-stability]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  chat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Typecheck web and API
+        run: npm run check
+      - name: API messaging and migration tests
+        run: npm test -w @campusgigs/api
+      - name: Build CampusGigs web
+        run: npm run build -w @campusgigs/web
