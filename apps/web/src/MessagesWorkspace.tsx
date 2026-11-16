@@ -565,7 +565,7 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
             onClick={()=>setProfile(true)}>
             <Avatar name={detail?.booking.otherName||'C'} src={detail?.booking.otherAvatar}/>
             <span><strong>{detail?.booking.otherName||'Opening chat…'}</strong>
-              <small>{otherTyping?<span className="cg-typing-status">● typing…</span>
+              <small>{otherTyping?<span className="cg-typing-status">{otherActivity==='recording'?'● recording a voice note…':'● typing…'}</span>
                 :detail?.booking.otherOnline?'● Active on CampusGigs':detail?.booking.otherCity||detail?.booking.otherState||detail?.booking.serviceTitle}</small></span>
           </button>
           <button className="cg-chat-head-btn" onClick={()=>setSettings(true)} aria-label="Chat settings">⚙</button>
