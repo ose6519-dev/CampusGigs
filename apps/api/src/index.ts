@@ -24,7 +24,7 @@ function addCors(response: Response, request: Request, allowed: string): Respons
   if (origin && allowed.split(',').map((entry) => entry.trim()).includes(origin)) {
     response.headers.set('Access-Control-Allow-Origin', origin);
     response.headers.set('Vary', 'Origin');
-    response.headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-File-Name');
+    response.headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-File-Name, X-Encrypted-Kind');
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
   }
   return response;
@@ -86,7 +86,8 @@ async function route(request: Request, env: Env): Promise<Response> {
   const requestUrl = new URL(request.url);
   const path = requestUrl.pathname;
   if (path === '/health' && request.method === 'GET') {
-    return json({ service: 'campusgigs-api', status: 'ok', phase: 'O', bookingsEnabled: true, messagingEnabled: true, paymentsEnabled: false });
+    return json({ service: 'campusgigs-api', status: 'ok', phase: 'P', bookingsEnabled: true, messagingEnabled: true,
+      secureMessaging: 'opt-in-device-encrypted', paymentsEnabled: false });
   }
   if (!path.startsWith('/v1/')) return json({ error: 'Not found' }, 404);
   if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);

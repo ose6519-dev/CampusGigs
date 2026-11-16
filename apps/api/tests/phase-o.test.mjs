@@ -113,3 +113,87 @@ test('Phase O attachments remain private and cannot be reused',async()=>{
     body:{clientId:randomUUID(),kind:'file',uploadId}})).status,404);
   db.close();
 });
+
+test('Phase P keys are immutable, secure mode is opt-in, and D1 rejects plaintext after enabling',async()=>{
+  const {db,call,bookingId:id}=fixture();
+  const keys=await Promise.all(['buyer','provider'].map(async uid=>{
+    const pair=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},false,['deriveBits']);
+    const exported=await crypto.subtle.exportKey('jwk',pair.publicKey);
+    return {uid,publicKey:{kty:'EC',crv:'P-256',x:exported.x,y:exported.y}};
+  }));
+  const firstPlain=await call(`/v1/chats/${id}/messages`,{method:'POST',body:{clientId:randomUUID(),kind:'text',text:'Older, unencrypted message'}});
+  assert.equal(firstPlain.status,201);
+  assert.equal((await call(`/v1/chats/${id}/secure/enable`,{method:'POST'})).status,409,'both keys required');
+  assert.equal((await call('/v1/me/chat-key',{method:'POST',body:{publicKey:keys[0].publicKey}})).status,200);
+  assert.equal((await call(`/v1/chats/${id}/secure/enable`,{method:'POST'})).status,409);
+  assert.equal((await call('/v1/me/chat-key',{uid:'provider',method:'POST',body:{publicKey:keys[1].publicKey}})).status,200);
+  assert.equal((await call('/v1/me/chat-key',{method:'POST',body:{publicKey:keys[1].publicKey}})).status,409,'key cannot be swapped');
+  assert.equal((await call(`/v1/chats/${id}/keys`,{uid:'stranger'})).status,404,'outsiders cannot obtain chat keys');
+  assert.equal((await call(`/v1/chats/${id}/secure/enable`,{uid:'stranger',method:'POST'})).status,404);
+  assert.equal((await call(`/v1/chats/${id}/secure/enable`,{method:'POST'})).status,200);
+  assert.equal((await call(`/v1/chats/${id}`)).body.secure,true);
+  assert.equal((await call(`/v1/chats/${id}/messages`,{method:'POST',body:{clientId:randomUUID(),kind:'text',text:'Leaked plaintext'}})).status,409);
+  assert.throws(()=>db.prepare(`INSERT INTO chat_messages(id,booking_id,sender_uid,client_id,kind,body)
+    VALUES (?,?,?,?,?,?)`).run(randomUUID(),id,'buyer',randomUUID(),'text','Bypass via DB'),/Secure chat requires encrypted messages/);
+  const iv='ABCDabcd1234-_ab',cipher='A'.repeat(40);
+  const encrypted=await call(`/v1/chats/${id}/messages`,{method:'POST',body:{clientId:randomUUID(),kind:'text',text:`cg1.${iv}.${cipher}`}});
+  assert.equal(encrypted.status,201);
+  const page=(await call(`/v1/chats/${id}/messages`)).body.messages;
+  assert.equal(page[0].cipher_version,0,'older messages retain their legacy marker');
+  assert.equal(page[1].cipher_version,1,'new messages carry encryption marker');
+  assert.equal((await call('/v1/me/chats')).body.chats[0].last_cipher_version,1);
+  assert.equal((await call('/v1/me/chats')).body.chats[0].secure,1);
+  db.close();
+});
+
+test('Phase P encrypted attachments reject plaintext and stay private until sent',async()=>{
+  const {db,call,bookingId:id}=fixture();
+  for(const uid of ['buyer','provider']){
+    const pair=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},false,['deriveBits']);
+    const jwk=await crypto.subtle.exportKey('jwk',pair.publicKey);
+    await call('/v1/me/chat-key',{uid,method:'POST',body:{publicKey:{kty:'EC',crv:'P-256',x:jwk.x,y:jwk.y}}});
+  }
+  await call(`/v1/chats/${id}/secure/enable`,{method:'POST'});
+  const plain=new Blob(['Unencrypted file'],{type:'application/pdf'});
+  assert.equal((await call(`/v1/chats/${id}/media`,{method:'POST',body:plain,
+    headers:{'content-type':'application/pdf','x-encrypted-kind':'file'}})).status,409);
+  const fake=new Blob(['Not encrypted'],{type:'application/octet-stream'});
+  assert.equal((await call(`/v1/chats/${id}/media`,{method:'POST',body:fake,
+    headers:{'content-type':'application/octet-stream','x-encrypted-kind':'file'}})).status,422);
+  const body=new Uint8Array(40);body.set([67,71,49]);
+  const data=new Blob([body],{type:'application/octet-stream'});
+  const uploaded=await call(`/v1/chats/${id}/media`,{method:'POST',body:data,
+    headers:{'content-type':'application/octet-stream','x-encrypted-kind':'file','x-file-name':'actual-secret.pdf'}});
+  assert.equal(uploaded.status,201);
+  assert.equal(db.prepare('SELECT filename,cipher_version,encrypted_kind FROM chat_uploads').get().filename,'Encrypted attachment');
+  const uploadId=uploaded.body.upload.id;
+  assert.equal((await call(`/v1/chats/${id}/media/${uploadId}`,{uid:'provider'})).status,404);
+  assert.equal((await call(`/v1/chats/${id}/messages`,{method:'POST',body:{clientId:randomUUID(),kind:'file',uploadId,text:''}})).status,409);
+  assert.equal((await call(`/v1/chats/${id}/messages`,{method:'POST',body:{clientId:randomUUID(),kind:'file',uploadId,text:`cg1.${'A'.repeat(16)}.${'B'.repeat(40)}`}})).status,201);
+  assert.equal((await call(`/v1/chats/${id}/media/${uploadId}`,{uid:'provider'})).status,200);
+  db.close();
+});
+
+test('Fast chat polling returns only new messages, typing and read receipts without leaking chats',async()=>{
+  const {db,call,bookingId:id}=fixture();
+  const route=`/v1/chats/${id}/updates`;
+  assert.equal((await call(route,{uid:'stranger'})).status,404);
+  assert.equal((await call(route)).body.messages.length,0);
+  const first=(await call(`/v1/chats/${id}/messages`,{method:'POST',body:{clientId:randomUUID(),kind:'text',text:'Hi'}})).body.message;
+  assert.equal((await call(route)).body.messages[0].id,first.id);
+  assert.equal((await call(route+'?after='+first.id)).body.messages.length,0);
+  await call(`/v1/chats/${id}/typing`,{uid:'provider',method:'POST',body:{active:true}});
+  const reply=(await call(`/v1/chats/${id}/messages`,{uid:'provider',method:'POST',
+    body:{clientId:randomUUID(),kind:'text',text:'Hello!',replyTo:first.id}})).body.message;
+  await call(`/v1/chats/${id}/read`,{uid:'provider',method:'POST'});
+  const response=(await call(route+'?after='+first.id)).body;
+  assert.deepEqual(response.messages.map(message=>message.id),[reply.id]);
+  assert.equal(response.messages[0].reply_client_id,first.client_id);
+  assert.equal(response.otherTyping,true);
+  assert.ok(response.otherReadAt);
+  const repeated=(await call(route+'?after='+reply.id)).body.messages;
+  assert.equal(repeated.length,0,'polling does not resend the whole chat timeline');
+  assert.equal((await call(route+'?after='+randomUUID())).status,400);
+  await assert.rejects(()=>call(route+'?after=bad-id'),/Invalid message cursor/);
+  db.close();
+});

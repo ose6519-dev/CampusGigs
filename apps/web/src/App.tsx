@@ -296,7 +296,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${view==='messages'?'cg-app-chat-mode':''}`}>
       <header className="site-header">
         <div className="header-inner">
           <button className="brand" type="button" onClick={() => goTo('explore')} aria-label="CampusGigs home">

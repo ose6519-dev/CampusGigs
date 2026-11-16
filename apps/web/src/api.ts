@@ -110,12 +110,13 @@ export async function chatMediaBlob(user:User,bookingId:string,uploadId:string):
   return response.blob();
 }
 
-export async function uploadChatMedia(user:User,bookingId:string,file:Blob,filename:string){
+export async function uploadChatMedia(user:User,bookingId:string,file:Blob,filename:string,encryptedKind?:'image'|'video'|'file'|'audio'){
   if(!baseUrl)throw new Error('CampusGigs API is not configured');
   const token=await user.getIdToken();
   const response=await fetch(`${baseUrl}/v1/chats/${bookingId}/media`,{
     method:'POST',body:file,headers:{Authorization:`Bearer ${token}`,
-      'Content-Type':file.type,'X-File-Name':encodeURIComponent(filename)},
+      'Content-Type':file.type,'X-File-Name':encodeURIComponent(filename),
+      ...(encryptedKind?{'X-Encrypted-Kind':encryptedKind}:{})},
   });
   const result=await response.json() as {upload?:{id:string;kind:'image'|'audio'|'file'|'video'};error?:string};
   if(!response.ok||!result.upload)throw new Error(result.error||'Could not attach file');
