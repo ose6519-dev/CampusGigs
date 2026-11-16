@@ -481,11 +481,22 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
   }
   async function react(message:Message,emoji:string|null){
     if(!user||!selected)return;
+    const chatId=selected,uid=user.uid;
+    const original=messages.find(item=>item.id===message.id)?.reactions||message.reactions;
+    const updated=original.filter(item=>item.reactor_uid!==uid);
+    if(emoji)updated.push({message_id:message.id,reactor_uid:uid,emoji});
+    // Close on tap and anchor the emoji to its message before the network round-trip.
+    setActions(null);
+    setMessages(previous=>previous.map(item=>item.id===message.id?{...item,reactions:updated}:item));
     try{
-      await apiRequest(user,`/v1/chats/${selected}/messages/${message.id}/reaction`,{
+      await apiRequest(user,`/v1/chats/${chatId}/messages/${message.id}/reaction`,{
         method:emoji?'PUT':'DELETE',...(emoji?{body:JSON.stringify({emoji})}:{}),
-      });setActions(null);await refreshThread(selected,true);
-    }catch(error){notice(error instanceof Error?error.message:'Could not react');}
+      });
+      if(selectedRef.current===chatId)await refreshThread(chatId,true);
+    }catch(error){
+      setMessages(previous=>previous.map(item=>item.id===message.id?{...item,reactions:original}:item));
+      notice(error instanceof Error?error.message:'Reaction could not be saved. Try again.');
+    }
   }
   async function pin(message:Message){
     if(!user||!selected)return;
