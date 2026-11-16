@@ -8,6 +8,10 @@ type Booking = {id:string;buyer_uid:string;provider_uid:string;service_title:str
   other_kind:string;other_online:number};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const reactions=new Set(['❤️','😂','👍','🔥','😮','😢','🙌','👏']);
+// Android emoji pickers may omit U+FE0F; always store the canonical reaction.
+const reactionKey=(value:string)=>value.normalize('NFC').replace(/\uFE0F/g,'');
+const canonicalReaction=(value:unknown)=>typeof value==='string'&&value.length<=8?
+  [...reactions].find(item=>reactionKey(item)===reactionKey(value.trim()))||null:null;
 const stickers=new Set(['💛','✨','🎉','🤝','🙏','💪','🥰','✅','🚀','💯']);
 const wallpapers=new Set(['warm','doodle','gold','night','aurora']);
 const cipherPattern=/^cg1\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22,}$/;
@@ -335,9 +339,10 @@ export async function chats(context:Context):Promise<Response|null>{
       if(request.method==='DELETE')await env.DB.prepare('DELETE FROM chat_reactions WHERE message_id=? AND reactor_uid=?').bind(messageId,user.uid).run();
       else{
         const data=asObject(await context.readJson(request));noExtra(data,['emoji']);
-        if(!reactions.has(String(data.emoji)))throw new InputError('Choose an available reaction');
+        const selected=canonicalReaction(data.emoji);
+        if(!selected)throw new InputError('Choose an available reaction');
         await env.DB.prepare(`INSERT INTO chat_reactions(message_id,reactor_uid,emoji) VALUES (?,?,?)
-          ON CONFLICT(message_id,reactor_uid) DO UPDATE SET emoji=excluded.emoji`).bind(messageId,user.uid,data.emoji).run();
+          ON CONFLICT(message_id,reactor_uid) DO UPDATE SET emoji=excluded.emoji`).bind(messageId,user.uid,selected).run();
       }
       return json({ok:true});
     }
