@@ -10,6 +10,8 @@ export type Profile = {
   city: string;
   faculty: string;
   department: string;
+  directory_preference: 'default' | 'public' | 'private';
+  member_public_id: string | null;
   state_name: string;
   institution_id: string | null;
   show_online: 0 | 1;
@@ -48,6 +50,10 @@ export type PublicProvider = {public_id:string;display_name:string;avatar_url:st
   state_name:string;institution_id:string|null;verified_at:string;online:0|1;follower_count:number;gig_count?:number};
 export type PublicProviderPage = {providers:PublicProvider[]};
 export type PublicProviderDetail = {provider:PublicProvider;gigs:PublicGig[]};
+export type PublicPerson = PublicProvider & { kind:'member'|'provider' };
+export type PublicPeoplePage = {people:PublicPerson[]};
+export type PublicPersonDetail = {person:PublicPerson;gigs:PublicGig[]};
+export type CommunityFollowingResponse = {following:(Pick<PublicPerson,'public_id'|'display_name'|'avatar_url'|'campus'|'state_name'|'online'|'kind'>)[]};
 export type FollowingResponse = {following:Pick<PublicProvider,'public_id'|'display_name'|'avatar_url'|'campus'|'state_name'|'online'>[]};
 export type InboxNotification = {id:string;kind:'follow'|'booking_requested'|'booking_accepted'|'booking_declined'|'booking_cancelled'|'provider_review';title:string;body:string;target_path:string;is_read:0|1;created_at:string};
 export type NotificationInbox = {notifications:InboxNotification[];unreadCount:number};

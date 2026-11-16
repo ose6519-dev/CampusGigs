@@ -10,6 +10,8 @@ export type ProfileRecord = {
   city: string;
   faculty: string;
   department: string;
+  directory_preference: 'default' | 'public' | 'private';
+  member_public_id: string | null;
   active_mode: Mode;
   onboarding_completed: 0 | 1;
   user_kind: 'buyer' | 'provider' | 'both';

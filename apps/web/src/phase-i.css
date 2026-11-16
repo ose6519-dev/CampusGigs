@@ -1,0 +1,8 @@
+/* Phase I — readable privacy control and mixed member/provider discovery. */
+.directory-visible,.directory-private{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:40px;font-size:11px;font-weight:900}
+.directory-visible{color:#147047;background:#e6f5e9;border:1px solid #c7e9d0}
+.directory-private{color:#675b4d;background:#f4efe7;border:1px solid #e7dfd0}
+.location-card-divider{height:1px;width:100%;background:#ebe6dd;margin:6px 0}
+.person-hero .eyebrow{letter-spacing:.08em}
+.people-count{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
+@media(max-width:650px){.location-settings-card{gap:12px}.location-card-divider{margin:3px 0}}

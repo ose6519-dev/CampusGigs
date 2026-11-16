@@ -8,6 +8,7 @@ import { parseOnboarding } from './onboardingValidation';
 import { findInstitution, institutionIdPattern, nigeriaStates } from './institutions.ts';
 import { notifications } from './notifications.ts';
 import { parseAcademics } from './academicValidation.ts';
+import { community } from './community.ts';
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
@@ -82,13 +83,14 @@ async function route(request: Request, env: Env): Promise<Response> {
   const requestUrl = new URL(request.url);
   const path = requestUrl.pathname;
   if (path === '/health' && request.method === 'GET') {
-    return json({ service: 'campusgigs-api', status: 'ok', phase: 'H', bookingsEnabled: true, paymentsEnabled: false });
+    return json({ service: 'campusgigs-api', status: 'ok', phase: 'I', bookingsEnabled: true, paymentsEnabled: false });
   }
   if (!path.startsWith('/v1/')) return json({ error: 'Not found' }, 404);
   if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
 
   if (path.startsWith('/v1/public/')) {
-    return await phaseB({ request, url: requestUrl, env, user: null, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false })
+    return await community({ request, url: requestUrl, env, user: null, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false })
+      || await phaseB({ request, url: requestUrl, env, user: null, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false })
       || json({ error: 'Not found' }, 404);
   }
 
@@ -160,6 +162,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (!profile.onboarding_completed && path !== '/v1/me' && path !== '/v1/me/onboarding') {
     return json({ error: 'Complete your CampusGigs welcome setup first' }, 403);
   }
+
+  const communityResponse = await community({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false });
+  if (communityResponse) return communityResponse;
 
   const phaseBResponse = await phaseB({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false });
   if (phaseBResponse) return phaseBResponse;
