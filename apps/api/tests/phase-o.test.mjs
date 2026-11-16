@@ -83,6 +83,8 @@ test('Phase O reactions, pinning, typing and per-user wallpapers',async()=>{
     body:{clientId:randomUUID(),kind:'sticker',text:'🎉'}})).body.message;
   assert.equal((await call(`/v1/chats/${id}/messages/${item.id}/reaction`,{uid:'provider',method:'PUT',body:{emoji:'❤️'}})).status,200);
   assert.equal((await call(`/v1/chats/${id}/messages`)).body.messages[0].reactions[0].emoji,'❤️');
+  assert.equal((await call(`/v1/chats/${id}/messages/${item.id}/reaction`,{uid:'provider',method:'PUT',body:{emoji:'❤'}})).status,200);
+  assert.equal((await call(`/v1/chats/${id}/messages`)).body.messages[0].reactions[0].emoji,'❤️');
   assert.equal((await call(`/v1/chats/${id}/messages/${item.id}/pin`,{method:'PUT'})).status,200);
   assert.ok((await call(`/v1/chats/${id}/messages`)).body.messages[0].pinned_by_uid);
   assert.equal((await call(`/v1/chats/${id}/typing`,{uid:'provider',method:'POST',body:{active:true}})).status,200);
@@ -221,5 +223,26 @@ test('Fast chat polling returns only new messages, typing and read receipts with
   assert.equal(repeated.length,0,'polling does not resend the whole chat timeline');
   assert.equal((await call(route+'?after='+randomUUID())).status,400);
   await assert.rejects(()=>call(route+'?after=bad-id'),/Invalid message cursor/);
+  db.close();
+});
+
+
+test('Phase R activity status distinguishes recording from typing without exposing it to strangers',async()=>{
+  const {db,call,bookingId:id}=fixture();
+  const endpoint=`/v1/chats/${id}/typing`;
+  assert.equal((await call(endpoint,{uid:'provider',method:'POST',
+    body:{active:true,activity:'recording'}})).status,200);
+  const detail=(await call(`/v1/chats/${id}`)).body;
+  assert.equal(detail.otherActivity,'recording');
+  assert.equal(detail.otherTyping,true);
+  const updates=(await call(`/v1/chats/${id}/updates`)).body;
+  assert.equal(updates.otherActivity,'recording');
+  assert.equal((await call(`/v1/chats/${id}`,{uid:'stranger'})).status,404);
+  await call(endpoint,{uid:'provider',method:'POST',body:{active:true}});
+  assert.equal((await call(`/v1/chats/${id}`)).body.otherActivity,'typing');
+  await call(endpoint,{uid:'provider',method:'POST',body:{active:false}});
+  assert.equal((await call(`/v1/chats/${id}`)).body.otherActivity,null);
+  await assert.rejects(()=>call(endpoint,{uid:'provider',method:'POST',
+    body:{active:true,activity:'invalid'}}),/Invalid chat activity/);
   db.close();
 });
