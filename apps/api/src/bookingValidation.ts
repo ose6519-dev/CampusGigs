@@ -36,3 +36,26 @@ export function parseBookingRole(url: URL): 'buyer' | 'provider' {
 }
 
 export function bookingUuid(input: string) { return uuid.test(input); }
+
+export function parseBookingProgress(input: unknown):{action:'start'|'submit'|'confirm';note:string} {
+  if(!input||typeof input!=='object'||Array.isArray(input))throw new InputError('Invalid booking progress');
+  const item=input as Record<string,unknown>;
+  if(Object.keys(item).some(key=>!['action','note'].includes(key))||
+     !['start','submit','confirm'].includes(String(item.action)))throw new InputError('Invalid booking action');
+  const action=item.action as 'start'|'submit'|'confirm';
+  if(action!=='submit'&&'note' in item)throw new InputError('A note is only used when submitting work');
+  const note=action==='submit'&&typeof item.note==='string'?item.note.trim():'';
+  if(action==='submit'&&(note.length<10||note.length>500))throw new InputError('Add a delivery note (10–500 characters)');
+  return {action,note};
+}
+
+export function parseBookingReview(input: unknown):{rating:number;comment:string}{
+  if(!input||typeof input!=='object'||Array.isArray(input))throw new InputError('Invalid review');
+  const item=input as Record<string,unknown>;
+  if(Object.keys(item).some(key=>!['rating','comment'].includes(key))||
+     !Number.isInteger(item.rating)||Number(item.rating)<1||Number(item.rating)>5||
+     (item.comment!==undefined&&typeof item.comment!=='string'))throw new InputError('Choose a rating from 1 to 5');
+  const comment=typeof item.comment==='string'?item.comment.trim():'';
+  if(comment.length>500)throw new InputError('Review must be 500 characters or fewer');
+  return {rating:Number(item.rating),comment};
+}

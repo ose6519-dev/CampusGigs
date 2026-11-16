@@ -34,6 +34,7 @@ export type ProviderApplication = {
   evidence_type: 'student_id' | 'government_id'; review_note: string; revision: number; submitted_at: string;
 };
 export type ProviderStatus = { application: ProviderApplication | null; verified: boolean; provider: { provider_status: string; verified_at: string } | null };
+export type ProviderAvailability = { acceptingBookings:boolean;activeBookings:number };
 export type Gig = { id: string; title: string; description: string; category: string; price_kobo: number; delivery_days: number;
   location_name: string; location_type: string; payment_option: string; status: string; cover_image_id: string | null; image_count: number; created_at: string };
 export type ProviderGigs = { gigs: Gig[] };
@@ -44,11 +45,12 @@ export type PublicGig = Pick<Gig, 'id' | 'title' | 'description' | 'category' | 
 };
 export type PublicGigPage = { gigs: PublicGig[]; nextOffset: number | null; paymentsEnabled: false };
 export type PublicGigDetail = { gig: PublicGig & {
-  provider_avatar: string; provider_bio: string; provider_city: string; provider_campus: string;
+  provider_avatar: string; provider_bio: string; provider_city: string; provider_campus: string;accepting_bookings:0|1;
 }; images: string[]; related: PublicGig[]; paymentsEnabled: false };
 export type Institution = {id:string;name:string;state_name:string;institution_type:'university'|'polytechnic'|'college';aliases:string};
 export type PublicProvider = {public_id:string;display_name:string;cg_username:string;avatar_url:string;bio:string;campus:string;city:string;
-  state_name:string;institution_id:string|null;verified_at:string;online:0|1;follower_count:number;gig_count?:number};
+  state_name:string;institution_id:string|null;verified_at:string;online:0|1;follower_count:number;gig_count?:number;
+  review_count?:number;rating_average?:number|null;accepting_bookings?:0|1};
 export type PublicProviderPage = {providers:PublicProvider[]};
 export type PublicProviderDetail = {provider:PublicProvider;gigs:PublicGig[]};
 export type PublicPerson = PublicProvider & { kind:'member'|'provider' };
@@ -59,14 +61,17 @@ export type FollowingResponse = {following:Pick<PublicProvider,'public_id'|'disp
 export type InboxNotification = {id:string;kind:'follow'|'booking_requested'|'booking_accepted'|'booking_declined'|'booking_cancelled'|'provider_review';title:string;body:string;target_path:string;is_read:0|1;created_at:string;archived_at:string|null};
 export type NotificationInbox = {notifications:InboxNotification[];unreadCount:number;archivedCount:number};
 export type BookingStatus = 'requested' | 'accepted' | 'declined' | 'cancelled';
+export type BookingProgress = 'not_started'|'in_progress'|'submitted'|'completed';
 export type BookingSummary = {
   id: string; gig_id: string; service_title: string; service_category: string;
   price_kobo: number; delivery_days: number; brief: string; status: BookingStatus;
+  progress_status:BookingProgress;started_at:string|null;submitted_at:string|null;completed_at:string|null;
   requested_at: string; responded_at: string | null; updated_at: string;
-  buyer_name: string; provider_name: string; cover_image_id: string | null;
+  buyer_name: string; provider_name: string; cover_image_id: string | null;reviewed:0|1;
 };
 export type BookingsResponse = { bookings: BookingSummary[]; role: 'buyer' | 'provider'; paymentsEnabled: false };
-export type BookingDetail = { booking: BookingSummary; events: { from_status: BookingStatus | null; to_status: BookingStatus; created_at: string }[]; paymentsEnabled: false };
+export type BookingDetail = { booking: BookingSummary & { completion_note:string }; events: { from_status: BookingStatus|BookingProgress|null; to_status: BookingStatus|BookingProgress; created_at: string }[];
+  review:{rating:number;comment:string;created_at:string}|null;viewerRole:'buyer'|'provider';paymentsEnabled: false };
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 export const gigImageUrl = (gigId: string, imageId: string) => `${baseUrl}/v1/public/gigs/${gigId}/images/${imageId}`;

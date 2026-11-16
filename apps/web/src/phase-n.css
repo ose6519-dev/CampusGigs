@@ -1,0 +1,17 @@
+/* Phase N: compact booking progress, delivery confirmation and provider availability. */
+.booking-status.progress-in_progress{background:#e9f2ff;color:#38628e}
+.booking-status.progress-submitted{background:#fff0c5;color:#8a5a09}
+.booking-status.progress-completed{background:#e3f5e5;color:#286443}
+.booking-next-step,.booking-delivery-note{margin:20px 0 10px;padding:17px;border:1px solid #e9d6a6;background:#fff8e6;border-radius:16px;display:flex;flex-direction:column;gap:9px}
+.booking-next-step strong,.booking-delivery-note strong{font-size:13px;font-weight:900;color:#4b3820}
+.booking-next-step p,.booking-delivery-note p{font-size:12px;color:#796a50;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.booking-next-step label{font-size:12px;font-weight:850;color:#3f3527;display:flex;flex-direction:column;gap:9px}
+.booking-next-step textarea,.booking-next-step select{width:100%;background:#fff;border:1px solid #e7d6b3;color:#32291d;border-radius:11px;padding:11px 12px;font-size:14px;resize:vertical}
+.booking-next-step textarea:focus-visible,.booking-next-step select:focus-visible{outline:2px solid #c99b24;outline-offset:2px}
+.booking-next-step .button{align-self:flex-start;margin-top:4px}
+.provider-availability{display:flex;flex-direction:column;gap:10px}.provider-availability h3{margin:0}.provider-availability p{margin:0}
+.provider-availability>button{border:1px solid #ddb953;border-radius:13px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff8e6;color:#65501b;padding:13px;font-size:12px;font-weight:900;cursor:pointer}
+.provider-availability>button[aria-checked="true"]{background:#fff0bd;color:#5e4108}.provider-availability>button:disabled{opacity:.55;cursor:wait}
+.provider-availability>button span{color:#94751e;font-size:11px}
+.detail-book:disabled{background:#d4d0c6;opacity:.8;color:#5e584e;cursor:not-allowed}
+@media(max-width:760px){.booking-next-step,.booking-delivery-note{padding:14px;margin:16px 0 10px}.booking-next-step .button{width:100%}}

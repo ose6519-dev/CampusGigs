@@ -153,7 +153,10 @@ export async function phaseB(context: Context): Promise<Response | null> {
     if (!publicProviderIdPattern.test(publicProvider[1])) return json({ error: 'Not found' }, 404);
     const provider = await env.DB.prepare(`SELECT pp.firebase_uid AS private_uid,pp.public_id,p.display_name,p.cg_username,p.avatar_url,
       p.bio,p.campus,p.city,p.state_name,p.institution_id,pp.verified_at,${onlineExpression} AS online,
-      (SELECT COUNT(*) FROM provider_follows f WHERE f.provider_uid=pp.firebase_uid) AS follower_count
+      (SELECT COUNT(*) FROM provider_follows f WHERE f.provider_uid=pp.firebase_uid) AS follower_count,
+      (SELECT COUNT(*) FROM service_reviews r WHERE r.provider_uid=pp.firebase_uid) AS review_count,
+      (SELECT ROUND(AVG(r.rating),1) FROM service_reviews r WHERE r.provider_uid=pp.firebase_uid) AS rating_average,
+      COALESCE((SELECT a.accepting_bookings FROM provider_availability a WHERE a.provider_uid=pp.firebase_uid),1) AS accepting_bookings
       FROM provider_profiles pp JOIN profiles p ON p.firebase_uid=pp.firebase_uid
       WHERE pp.public_id=? AND pp.provider_status='active' AND p.account_status='active'`).bind(publicProvider[1])
       .first<{private_uid:string;[key:string]:unknown}>();
@@ -195,6 +198,7 @@ export async function phaseB(context: Context): Promise<Response | null> {
     const gig = await env.DB.prepare(`
       SELECT ${publicGigFields}, p.display_name AS provider_name, p.cg_username AS provider_username, p.avatar_url AS provider_avatar,
         pp.public_id AS provider_public_id,${onlineExpression} AS provider_online,
+        COALESCE((SELECT a.accepting_bookings FROM provider_availability a WHERE a.provider_uid=g.provider_uid),1) AS accepting_bookings,
         p.bio AS provider_bio, p.campus AS provider_campus, p.city AS provider_city, pp.verified_at
       FROM gigs g JOIN provider_profiles pp ON pp.firebase_uid = g.provider_uid
       JOIN profiles p ON p.firebase_uid = g.provider_uid

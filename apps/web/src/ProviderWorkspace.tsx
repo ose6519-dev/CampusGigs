@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { User } from 'firebase/auth';
-import { apiRequest, gigImageUrl, type Gig, type ProviderGigs, type ProviderStatus } from './api';
+import { apiRequest, gigImageUrl, type Gig, type ProviderAvailability, type ProviderGigs, type ProviderStatus } from './api';
 import { serviceCategories } from './serviceCatalog';
 
 const categories = serviceCategories;
@@ -11,6 +11,8 @@ export function ProviderWorkspace({ user, location, stateName, institutionId, no
   user: User | null; location: string; stateName: string; institutionId: string; notice: (message: string) => void; onLogin: () => void; onApproved: (verified: boolean) => void;
 }) {
   const [provider, setProvider] = useState<ProviderStatus | null>(null);
+  const [availability,setAvailability]=useState<ProviderAvailability|null>(null);
+  const [availabilityBusy,setAvailabilityBusy]=useState(false);
   const [gigs, setGigs] = useState<Gig[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -21,7 +23,7 @@ export function ProviderWorkspace({ user, location, stateName, institutionId, no
   const [images, setImages] = useState<File[]>([]);
 
   const refresh = useCallback(async () => {
-    if (!user) { setProvider(null); setGigs([]); onApproved(false); return; }
+    if (!user) { setProvider(null);setAvailability(null); setGigs([]); onApproved(false); return; }
     setLoading(true);
     try {
       const [profile, listings] = await Promise.all([
@@ -29,6 +31,10 @@ export function ProviderWorkspace({ user, location, stateName, institutionId, no
         apiRequest<ProviderGigs>(user,'/v1/provider/gigs'),
       ]);
       setProvider(profile); setGigs(listings.gigs); onApproved(profile.verified);
+      if(profile.verified){
+        try{setAvailability(await apiRequest<ProviderAvailability>(user,'/v1/provider/availability'));}
+        catch{setAvailability(null);}
+      }else setAvailability(null);
       if (profile.application) {
         const current = profile.application;
         setCategoriesChosen(current.categories);
@@ -39,6 +45,17 @@ export function ProviderWorkspace({ user, location, stateName, institutionId, no
   }, [user, onApproved, notice]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  async function toggleAvailability(){
+    if(!user||!availability||availabilityBusy)return;
+    setAvailabilityBusy(true);
+    try{
+      const result=await apiRequest<ProviderAvailability>(user,'/v1/provider/availability',
+        {method:'PUT',body:JSON.stringify({acceptingBookings:!availability.acceptingBookings})});
+      setAvailability(result);notice(result.acceptingBookings?'New requests enabled.':'New requests paused. Existing work stays active.');
+    }catch(error){notice(error instanceof Error?error.message:'Could not update availability');}
+    finally{setAvailabilityBusy(false);}
+  }
 
   function toggleCategory(category: string) {
     setCategoriesChosen(current => current.includes(category) ? current.filter(item => item !== category) : current.length < 4 ? [...current, category] : current);
@@ -87,7 +104,7 @@ export function ProviderWorkspace({ user, location, stateName, institutionId, no
         } catch { failedImages += 1; }
       }
       setGig(initialGig); setImages([]);
-      notice(failedImages ? `Gig published. ${failedImages} image(s) could not upload.` : 'Your gig is live! Booking and payment come in a later phase.');
+      notice(failedImages ? `Gig published. ${failedImages} image(s) could not upload.` : 'Your gig is live! Booking requests are available; payments remain disabled.');
       await refresh();
     } catch (error) { notice((error as Error).message); }
     finally { setBusy(false); }
@@ -99,7 +116,7 @@ export function ProviderWorkspace({ user, location, stateName, institutionId, no
     {!user ? <div className="studio-empty"><div className="studio-symbol">✦</div><h2>Earn from your skills.</h2><p>Use your CampSell account to get started on CampusGigs.</p><button className="button button-dark" onClick={onLogin}>Sign in to apply <span>→</span></button></div>
       : loading && !provider ? <div className="studio-empty"><p>Loading your provider workspace…</p></div>
       : provider?.verified ? <div className="studio-grid">
-        <div className="studio-side"><div className="verified-panel"><span className="verified-seal">✦</span><span className="eyebrow">GIG PROVIDER</span><h2>You're <em>verified.</em></h2><p>Your profile carries the CampusGigs verified badge.</p><span className="verified-chip">✓ Identity approved</span></div><div className="studio-panel"><span className="eyebrow">YOUR LISTINGS</span><h3>{gigs.length} {gigs.length === 1 ? 'service' : 'services'}</h3><p>Bookings and payment checkout are not active yet.</p><button className="button button-ghost" type="button" onClick={() => void refresh()}>↻ Refresh</button></div></div>
+        <div className="studio-side"><div className="verified-panel"><span className="verified-seal">✦</span><span className="eyebrow">GIG PROVIDER</span><h2>You're <em>verified.</em></h2><p>Your profile carries the CampusGigs verified badge.</p><span className="verified-chip">✓ Identity approved</span></div><div className="studio-panel provider-availability"><span className="eyebrow">BOOKING AVAILABILITY</span><h3>{availability?.acceptingBookings?'Open for requests':'Taking a break'}</h3><p>{availability?`${availability.activeBookings} active job(s). Pause new requests without interrupting existing jobs.`:'Checking availability…'}</p><button type="button" role="switch" aria-checked={!!availability?.acceptingBookings} disabled={!availability||availabilityBusy} onClick={()=>void toggleAvailability()}>{availability?.acceptingBookings?'● Accepting bookings':'○ Paused'} <span>{availabilityBusy?'Updating…':'Change ↗'}</span></button></div><div className="studio-panel"><span className="eyebrow">YOUR LISTINGS</span><h3>{gigs.length} {gigs.length === 1 ? 'service' : 'services'}</h3><p>Track requests under My bookings. Payments remain disabled.</p><button className="button button-ghost" type="button" onClick={() => void refresh()}>↻ Refresh</button></div></div>
         <div className="studio-main"><form className="studio-panel studio-form" onSubmit={publishGig}><span className="eyebrow">NEW SERVICE</span><h2>Create a <em>gig.</em></h2><div className="studio-two"><label>Gig title<input required minLength={8} maxLength={100} placeholder="e.g. I will design your brand logo" value={gig.title} onChange={event => setGig({ ...gig,title:event.target.value })}/></label><label>Category<select value={gig.category} onChange={event => setGig({ ...gig,category:event.target.value })}>{categories.map(item => <option key={item}>{item}</option>)}</select></label></div><label>Description<textarea required rows={5} minLength={40} maxLength={3000} placeholder="Explain what you offer, what clients receive and what you need to begin." value={gig.description} onChange={event => setGig({ ...gig,description:event.target.value })}/></label><div className="studio-two"><label>Starting price (₦)<input required min={100} max={10000000} step="0.01" type="number" placeholder="5000" value={gig.priceNaira} onChange={event => setGig({ ...gig,priceNaira:event.target.value })}/></label><label>Delivery days<input required min={1} max={90} type="number" value={gig.deliveryDays} onChange={event => setGig({ ...gig,deliveryDays:Number(event.target.value) })}/></label></div><div className="studio-two"><label>Service location<select value={gig.locationType} onChange={event => setGig({ ...gig,locationType:event.target.value })}><option value="online">Online</option><option value="in_person">In-person</option><option value="both">Online & in-person</option></select></label><label>Campus / city<input required minLength={3} maxLength={100} placeholder="e.g. NDU, Amassoma" value={gig.locationName} onChange={event => setGig({ ...gig,locationName:event.target.value })}/></label></div><label>Payment option <span className="field-hint">Activates with the later payment phase</span><select value={gig.paymentOption} onChange={event => setGig({ ...gig,paymentOption:event.target.value })}><option value="preview">A · Preview before balance</option><option value="full">Full upfront payment</option><option value="deposit">Deposit then balance</option></select></label><label className="upload-label">Gig photos <span className="field-hint">Up to 4 · JPEG, PNG, WebP · 4 MB each</span><input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={event => setImages(Array.from(event.target.files || []).slice(0,4))}/><small>{images.length ? `${images.length} photo(s) selected` : 'Add clear examples of your work'}</small></label><p className="integrity-note">Tutoring, typing and proofreading are welcome. Completing assignments or exams for another person is not allowed.</p><button type="submit" className="button button-dark" disabled={busy}>{busy ? 'Publishing…' : 'Publish service'} <span>↗</span></button></form></div>
         <div className="studio-list"><div className="section-heading"><div><span className="eyebrow">YOUR WORK</span><h2>My <i>gigs.</i></h2></div></div>{gigs.length === 0 ? <div className="studio-empty mini"><p>No gigs yet. Publish your first service above.</p></div> : <div className="gig-grid">{gigs.map(item => <article className="gig-card" key={item.id}><div className="gig-cover">{item.cover_image_id ? <img src={gigImageUrl(item.id,item.cover_image_id)} alt="Gig example"/> : <span>✳</span>}<span className="gig-status">{item.status}</span></div><div className="gig-info"><small>{item.category}</small><h3>{item.title}</h3><div className="gig-meta"><strong>{money(item.price_kobo)}</strong><span>{item.delivery_days} day(s)</span></div></div></article>)}</div>}</div>
       </div> : <div className="application-layout"><div className="application-art"><span className="illustration-star">✦</span><span className="eyebrow">STEP 01 · GET VERIFIED</span><h2>Your skills<br/>deserve to<br/><em>be seen.</em></h2><p>One simple verification. One marketplace full of opportunities.</p><div className="art-verification"><span>✓</span><div><strong>Identity checked</strong><small>Approved providers earn a gold badge.</small></div></div></div><div className="studio-panel studio-form">

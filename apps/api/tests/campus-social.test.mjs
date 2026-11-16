@@ -11,7 +11,7 @@ import { serviceSearchWords } from '../src/publicGigs.ts';
 function fixture(){
   const db=new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys=ON');
-  for(const file of ['0001_profiles.sql','0002_providers_gigs.sql','0003_bookings.sql','0004_member_onboarding.sql','0005_campus_social.sql','0006_institution_directory.sql','0007_phase_g_notifications.sql','0010_phase_j_search.sql','0012_phase_m_notifications.sql'])
+  for(const file of ['0001_profiles.sql','0002_providers_gigs.sql','0003_bookings.sql','0004_member_onboarding.sql','0005_campus_social.sql','0006_institution_directory.sql','0007_phase_g_notifications.sql','0010_phase_j_search.sql','0012_phase_m_notifications.sql','0013_phase_n_booking_progress.sql'])
     db.exec(readFileSync(new URL(`../migrations/${file}`,import.meta.url),'utf8'));
   const bayelsa=db.prepare("SELECT id,name FROM institutions WHERE state_name='Bayelsa' AND aliases LIKE '%NDU%' LIMIT 1").get();
   const lagos=db.prepare("SELECT id,name FROM institutions WHERE state_name='Lagos' AND aliases LIKE '%UNILAG%' LIMIT 1").get();
@@ -154,6 +154,26 @@ test('Phase G inbox isolates users, deduplicates follows and reports booking act
   db.prepare("UPDATE provider_applications SET status='pending' WHERE id='app-bay'").run();
   db.prepare(`UPDATE provider_applications SET status='changes_requested',reviewed_by_uid='buyer',review_note='Upload a clearer ID photo.' WHERE id='app-bay'`).run();
   assert.equal((await request('/v1/me/notifications',{user:'bay'})).body.notifications[0].kind,'provider_review');
+  db.close();
+});
+
+test('Phase N provider public profile reports availability and completed-review aggregate only',async()=>{
+  const {db,request}=fixture();
+  const id=db.prepare("SELECT public_id FROM provider_profiles WHERE firebase_uid='bay'").get().public_id;
+  const initial=(await request(`/v1/public/providers/${id}`)).body.provider;
+  assert.equal(initial.accepting_bookings,1);
+  assert.equal(initial.review_count,0);
+  assert.equal(initial.rating_average,null);
+  db.prepare('INSERT INTO provider_availability(provider_uid,accepting_bookings) VALUES (?,0)').run('bay');
+  assert.equal((await request(`/v1/public/providers/${id}`)).body.provider.accepting_bookings,0);
+  db.prepare(`INSERT INTO service_bookings(id,buyer_uid,provider_uid,gig_id,request_id,service_title,service_category,price_kobo,delivery_days,brief,last_actor_uid,status,progress_status)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run('n-review-1','buyer','bay','gig-bay','n-req-1','Logo design','Design & Creative',500000,3,'I need a strong logo for my business.','buyer','accepted','completed');
+  db.prepare('INSERT INTO service_reviews(booking_id,buyer_uid,provider_uid,rating,comment) VALUES (?,?,?,?,?)')
+    .run('n-review-1','buyer','bay',5,'This was a brilliant job.');
+  const rated=(await request(`/v1/public/providers/${id}`)).body.provider;
+  assert.equal(rated.review_count,1);
+  assert.equal(rated.rating_average,5);
+  assert.equal('comment' in rated,false,'public provider profile must not disclose comments');
   db.close();
 });
 
