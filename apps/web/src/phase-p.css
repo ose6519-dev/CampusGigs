@@ -26,6 +26,7 @@
 .cg-app-chat-mode .cg-message-text{font-size:14px;font-weight:700;line-height:1.55;letter-spacing:.01em}
 .cg-app-chat-mode .cg-compose-field textarea{font-weight:650;resize:none}
 .cg-app-chat-mode .cg-conversation-head strong{font-weight:900}
+.cg-app-chat-mode .cg-chat-row.mine{margin-right:27px}
 .cg-msg-list-back{display:none;flex:none;border:0;border-radius:12px;width:35px;height:38px;
   background:#f4edda;color:#292216;font-size:28px;cursor:pointer}
 .cg-chat-bubble{transition:transform .2s cubic-bezier(.2,.9,.15,1)}
@@ -107,7 +108,7 @@
   .cg-app-chat-mode .cg-message-text{font-size:14px;font-weight:740}
   .cg-app-chat-mode .cg-conversation-head .cg-chat-avatar{width:41px;height:41px}
   .cg-app-chat-mode .cg-chat-jump{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
-  .cg-app-chat-mode .cg-message-more{opacity:.18}
+  .cg-app-chat-mode .cg-message-more{display:none}
 }
 @media(max-width:360px){
   .cg-app-chat-mode .cg-compose-field button{width:24px;font-size:19px}
