@@ -3,6 +3,8 @@ import type { User } from 'firebase/auth';
 import { getRedirectResult, onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth';
 import { adminGet, type Member, type Members, type Overview } from './api';
 import { auth, firebaseReady, googleProvider } from './firebase';
+import { ProviderApprovals } from './ProviderApprovals';
+import { GigModeration } from './GigModeration';
 
 type View = 'overview' | 'members' | 'providers' | 'gigs' | 'bookings' | 'disputes' | 'finance' | 'settings';
 type Gate = 'checking' | 'signedout' | 'verifying' | 'admin' | 'denied' | 'error';
@@ -10,8 +12,8 @@ type Gate = 'checking' | 'signedout' | 'verifying' | 'admin' | 'denied' | 'error
 const navigation: { id: View; name: string; symbol: string; group: 'main' | 'manage' | 'system'; phase?: string }[] = [
   { id: 'overview', name: 'Overview', symbol: '▦', group: 'main' },
   { id: 'members', name: 'Members', symbol: '◉', group: 'main' },
-  { id: 'providers', name: 'Providers', symbol: '✺', group: 'manage', phase: 'Phase B' },
-  { id: 'gigs', name: 'Gig listings', symbol: '▣', group: 'manage', phase: 'Phase B' },
+  { id: 'providers', name: 'Providers', symbol: '✺', group: 'manage' },
+  { id: 'gigs', name: 'Gig listings', symbol: '▣', group: 'manage' },
   { id: 'bookings', name: 'Bookings', symbol: '◷', group: 'manage', phase: 'Phase D' },
   { id: 'disputes', name: 'Disputes', symbol: '◇', group: 'manage', phase: 'Phase F' },
   { id: 'finance', name: 'Finance & payouts', symbol: '₦', group: 'manage', phase: 'Phase E' },
@@ -126,6 +128,12 @@ function App() {
     setNotice('');
   }
 
+  async function refreshStats() {
+    if (!user) return;
+    try { setOverview(await adminGet<Overview>(user,'/v1/admin/overview')); }
+    catch (error) { setNotice((error as Error).message); }
+  }
+
   if (gate !== 'admin') return <div className="auth-screen">
     <div className="auth-panel">
       <a className="auth-logo" href="https://campusgigs-97y.pages.dev/" aria-label="CampusGigs marketplace"><span className="monogram">CG</span><span>Campus<span>Gigs</span><small>ADMIN WORKSPACE</small></span></a>
@@ -157,7 +165,7 @@ function App() {
     {navOpen && <button className="nav-backdrop" aria-label="Close navigation" onClick={() => setNavOpen(false)} />}
     <aside id="admin-sidebar" className={`sidebar ${navOpen ? 'open' : ''}`}>
       <div className="sidebar-header"><div className="logo-box">CG</div><div className="logo-name">Campus<span>Gigs</span><small>ADMIN CONTROL</small></div><button className="nav-close" aria-label="Close menu" onClick={() => setNavOpen(false)}>×</button></div>
-      <div className="workspace-badge"><span className="live-pulse"/> LIVE WORKSPACE <span className="pill-note">PHASE A</span></div>
+      <div className="workspace-badge"><span className="live-pulse"/> LIVE WORKSPACE <span className="pill-note">PHASE B</span></div>
       <nav aria-label="Admin sections">
         {(['main', 'manage', 'system'] as const).map(group => <div className="nav-group" key={group}>
           <span className="nav-group-label">{group === 'main' ? 'GENERAL' : group === 'manage' ? 'MARKETPLACE' : 'PREFERENCES'}</span>
@@ -172,21 +180,23 @@ function App() {
       <main className="content">
         {view === 'overview' && <>
           <div className="page-heading"><div><span className="eyebrow">MONDAY TO SUNDAY · ALWAYS ON</span><h1>Good day, <em>Admin.</em></h1><p>Here's what's happening across your CampusGigs workspace.</p></div><button className="btn btn-light" onClick={() => user && void loadOverview(user)}>↻ &nbsp; Refresh</button></div>
-          <section className="welcome-banner"><div><span className="banner-eyebrow">YOUR PLATFORM. YOUR PEOPLE.</span><h2>Build something<br/><i>that works.</i></h2><p>CampusGigs administration is connected to a separate, protected database. Provider verification opens in Phase B.</p><button onClick={() => selectView('members')}>Explore members <span>↗</span></button></div><div className="banner-graphic"><span>CG</span><b>✳</b></div></section>
+          <section className="welcome-banner"><div><span className="banner-eyebrow">YOUR PLATFORM. YOUR PEOPLE.</span><h2>Build something<br/><i>that works.</i></h2><p>Provider applications, ID checks and gig moderation are now ready in your independent CampusGigs workspace.</p><button onClick={() => selectView('providers')}>Review providers <span>↗</span></button></div><div className="banner-graphic"><span>CG</span><b>✳</b></div></section>
           <div className="stats-grid">
             <article className="stat-card"><span className="stat-icon">◉</span><span className="stat-label">Registered members</span><strong>{overview?.totals.members ?? '—'}</strong><span className="stat-foot">CampusGigs accounts</span></article>
             <article className="stat-card"><span className="stat-icon">✦</span><span className="stat-label">Joined this week</span><strong>{overview?.totals.new_week ?? '—'}</strong><span className="stat-foot">Last seven days</span></article>
-            <article className="stat-card"><span className="stat-icon">↗</span><span className="stat-label">Providing preference</span><strong>{overview?.totals.providing ?? '—'}</strong><span className="stat-foot">Not approved providers</span></article>
-            <article className="stat-card"><span className="stat-icon">⊘</span><span className="stat-label">Suspended accounts</span><strong>{overview?.totals.suspended ?? '—'}</strong><span className="stat-foot">Platform safeguards</span></article>
+            <article className="stat-card clickable" onClick={() => selectView('providers')}><span className="stat-icon">✺</span><span className="stat-label">Pending approvals</span><strong>{overview?.providers?.pending ?? '—'}</strong><span className="stat-foot">Tap to review providers →</span></article>
+            <article className="stat-card clickable" onClick={() => selectView('gigs')}><span className="stat-icon">▣</span><span className="stat-label">Active gigs</span><strong>{overview?.gigCounts?.active ?? '—'}</strong><span className="stat-foot">Service listings →</span></article>
           </div>
           <section className="panel recent-panel"><div className="panel-title"><div><span className="eyebrow">COMMUNITY</span><h2>Recent members</h2></div><button className="text-action" onClick={() => selectView('members')}>See all members →</button></div><MemberRows members={overview?.recent || []} emptyText="No CampusGigs members have signed in yet."/></section>
-          <div className="info-grid"><article className="info-card"><div className="info-card-head"><span>◈</span><span className="small-tag">READY</span></div><h3>Verified access</h3><p>Only Firebase accounts with a verified, active administrator grant in CampusGigs D1 can enter this workspace.</p></article><article className="info-card"><div className="info-card-head"><span>▦</span><span className="small-tag gold">NEXT</span></div><h3>Provider reviews</h3><p>Applications, ID checks and gig moderation will appear here in Phase B—after your approval.</p></article></div>
+          <div className="info-grid"><article className="info-card"><div className="info-card-head"><span>◈</span><span className="small-tag">SECURED</span></div><h3>Verified access</h3><p>Only verified Firebase admins with an active CampusGigs D1 grant may review private IDs.</p></article><article className="info-card"><div className="info-card-head"><span>▦</span><span className="small-tag gold">READY</span></div><h3>Provider reviews</h3><p>{overview?.providers?.approved ?? 0} approved providers. Verify IDs and moderate services from this workspace.</p></article></div>
         </>}
         {view === 'members' && <><div className="page-heading"><div><span className="eyebrow">ACCOUNT DIRECTORY</span><h1>All <em>members.</em></h1><p>Read-only view of accounts in the separate CampusGigs database.</p></div><span className="page-count">{overview?.totals.members ?? 0} total</span></div>
           <section className="panel"><div className="search-row"><form onSubmit={event => {event.preventDefault();setSubmittedSearch(searchDraft.trim()); if (submittedSearch === searchDraft.trim()) void loadMembers();}}><span>⌕</span><input maxLength={80} placeholder="Find name, email, ID, campus or city" value={searchDraft} onChange={event => setSearchDraft(event.target.value)} aria-label="Search members"/><button type="submit">Search</button></form><button className="btn btn-light compact" onClick={() => void loadMembers()}>↻</button></div><MemberRows members={members} emptyText={membersLoading ? 'Loading members…' : 'No matching CampusGigs members.'}/>{nextOffset !== null && <button className="load-more" disabled={membersLoading} onClick={() => void loadMembers(nextOffset, true)}>{membersLoading ? 'Loading…' : 'Load more members ↓'}</button>}</section>
         </>}
+        {view === 'providers' && user && <ProviderApprovals user={user} notice={setNotice} onChanged={() => void refreshStats()}/>}
+        {view === 'gigs' && user && <GigModeration user={user} notice={setNotice} onChanged={() => void refreshStats()}/>}
         {view === 'settings' && <><div className="page-heading"><div><span className="eyebrow">PLATFORM INFORMATION</span><h1>Workspace <em>info.</em></h1><p>Current configuration and account separation.</p></div></div><div className="info-grid settings-grid"><article className="info-card"><h3>Administrator</h3><p>{user?.email}</p><span className="small-tag">D1 role verified</span></article><article className="info-card"><h3>Data source</h3><p>CampusGigs D1 & R2 only</p><span className="small-tag">Separate from CampSell</span></article><article className="info-card"><h3>Authentication</h3><p>Shared CampSell Firebase identity project</p><span className="small-tag">Server-side JWT checked</span></article><article className="info-card"><h3>Payments</h3><p>Not yet activated</p><span className="small-tag gold">Later phase</span></article></div></>}
-        {view !== 'overview' && view !== 'members' && view !== 'settings' && <><div className="page-heading"><div><span className="eyebrow">CAMPUSGIGS OPERATIONS</span><h1>{title}<em>.</em></h1><p>This section will become available when its workflow is implemented and verified.</p></div></div><section className="coming-panel"><span className="coming-symbol">✳</span><span className="eyebrow">{navigation.find(item => item.id === view)?.phase || 'UPCOMING'}</span><h2>Built with care.<br/><em>Coming next.</em></h2><p>We have not enabled these controls yet. Nothing here can approve users, move funds or change order records until the corresponding secure phase is complete.</p><button className="btn btn-dark" onClick={() => selectView('overview')}>Back to overview →</button></section></>}
+        {view !== 'overview' && view !== 'members' && view !== 'providers' && view !== 'gigs' && view !== 'settings' && <><div className="page-heading"><div><span className="eyebrow">CAMPUSGIGS OPERATIONS</span><h1>{title}<em>.</em></h1><p>This section will become available when its workflow is implemented and verified.</p></div></div><section className="coming-panel"><span className="coming-symbol">✳</span><span className="eyebrow">{navigation.find(item => item.id === view)?.phase || 'UPCOMING'}</span><h2>Built with care.<br/><em>Coming next.</em></h2><p>We have not enabled these controls yet. Payments, escrow and order records are disabled until their secure phases are complete.</p><button className="btn btn-dark" onClick={() => selectView('overview')}>Back to overview →</button></section></>}
         {notice && <div className="toast" role="alert">{notice}<button aria-label="Dismiss message" onClick={() => setNotice('')}>×</button></div>}
         <footer className="page-footer">© {new Date().getFullYear()} CampusGigs Admin <span>·</span> Independent platform operations <span>·</span> <a href="https://campusgigs-97y.pages.dev/">Marketplace ↗</a></footer>
       </main>

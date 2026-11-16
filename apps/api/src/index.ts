@@ -2,6 +2,7 @@ import { AuthError, verifyFirebaseToken } from './auth';
 import { AdminAccessError, assertAdminAccess, escapeLike, parseMemberSearch } from './admin';
 import { InputError, parseMode, parseProfileUpdate } from './validation';
 import type { ProfileRecord } from './types';
+import { phaseB } from './phaseB';
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
@@ -15,13 +16,13 @@ function addCors(response: Response, request: Request, allowed: string): Respons
     response.headers.set('Access-Control-Allow-Origin', origin);
     response.headers.set('Vary', 'Origin');
     response.headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-    response.headers.set('Access-Control-Allow-Methods', 'GET, PATCH, OPTIONS');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
   }
   return response;
 }
 
 async function readBody(request: Request): Promise<unknown> {
-  const limit = 4096;
+  const limit = 8192;
   if (Number(request.headers.get('content-length') || 0) > limit) throw new InputError('Request too large');
   if (request.headers.get('content-type')?.split(';')[0]?.trim() !== 'application/json') {
     throw new InputError('Content-Type must be application/json');
@@ -45,16 +46,16 @@ async function readBody(request: Request): Promise<unknown> {
   try { return JSON.parse(raw); } catch { throw new InputError('Invalid JSON'); }
 }
 
-async function checkWriteRateLimit(env: Env, uid: string): Promise<void> {
-  const bucket = Math.floor(Date.now() / 60_000);
-  const key = `profile:${uid}:${bucket}`;
+async function checkWriteRateLimit(env: Env, uid: string, route = 'profile', max = 20): Promise<void> {
+  const bucket = Math.floor(Date.now() / (route.endsWith('-daily') ? 86_400_000 : 60_000));
+  const key = `${route}:${uid}:${bucket}`;
   await env.DB.prepare(`
     INSERT INTO api_rate_limits (key, bucket, hits) VALUES (?, ?, 1)
     ON CONFLICT(key) DO UPDATE SET hits = hits + 1
   `).bind(key, bucket).run();
   const result = await env.DB.prepare('SELECT hits FROM api_rate_limits WHERE key = ?')
     .bind(key).first<{ hits: number }>();
-  if ((result?.hits || 0) > 20) throw new RateLimitError('Too many changes. Try again in a minute.');
+  if ((result?.hits || 0) > max) throw new RateLimitError('Too many requests. Try again in a minute.');
 }
 
 async function ensureProfile(env: Env, uid: string, email: string, displayName: string, picture: string): Promise<ProfileRecord> {
@@ -76,10 +77,15 @@ async function route(request: Request, env: Env): Promise<Response> {
   const requestUrl = new URL(request.url);
   const path = requestUrl.pathname;
   if (path === '/health' && request.method === 'GET') {
-    return json({ service: 'campusgigs-api', status: 'ok', phase: 'A' });
+    return json({ service: 'campusgigs-api', status: 'ok', phase: 'B', paymentsEnabled: false });
   }
   if (!path.startsWith('/v1/')) return json({ error: 'Not found' }, 404);
-  if (!['GET', 'PATCH'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
+  if (!['GET', 'POST', 'PATCH'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
+
+  if (path.startsWith('/v1/public/')) {
+    return await phaseB({ request, url: requestUrl, env, user: null, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false })
+      || json({ error: 'Not found' }, 404);
+  }
 
   const user = await verifyFirebaseToken(request, env.FIREBASE_PROJECT_ID);
 
@@ -91,6 +97,9 @@ async function route(request: Request, env: Env): Promise<Response> {
       WHERE r.firebase_uid = ?
     `).bind(user.uid).first<{ role: string; account_status: string }>();
     assertAdminAccess(grant?.role, user.emailVerified, grant?.account_status);
+
+    const phaseBResponse = await phaseB({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: true });
+    if (phaseBResponse) return phaseBResponse;
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
 
     if (path === '/v1/admin/overview') {
@@ -106,7 +115,16 @@ async function route(request: Request, env: Env): Promise<Response> {
         SELECT firebase_uid, display_name, email, campus, city, active_mode, account_status, created_at
         FROM profiles ORDER BY created_at DESC, firebase_uid DESC LIMIT 6
       `).all();
-      return json({ totals, recent: recent.results || [], phase: 'A', dataSource: 'CampusGigs D1' });
+      const providers = await env.DB.prepare(`
+        SELECT COUNT(*) AS applicants,
+          SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
+          SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved
+        FROM provider_applications
+      `).first();
+      const gigCounts = await env.DB.prepare(`
+        SELECT COUNT(*) AS total, SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active FROM gigs
+      `).first();
+      return json({ totals, providers, gigCounts, recent: recent.results || [], phase: 'B', dataSource: 'CampusGigs D1' });
     }
 
     if (path === '/v1/admin/members') {
@@ -131,6 +149,9 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   const profile = await ensureProfile(env, user.uid, user.emailVerified ? user.email : '', user.displayName, user.picture);
   if (profile.account_status !== 'active') return json({ error: 'Account suspended' }, 403);
+
+  const phaseBResponse = await phaseB({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false });
+  if (phaseBResponse) return phaseBResponse;
 
   if (path === '/v1/me' && request.method === 'GET') {
     const role = await env.DB.prepare('SELECT role FROM platform_roles WHERE firebase_uid = ?')
@@ -159,7 +180,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (path === '/v1/me/mode' && request.method === 'PATCH') {
     await checkWriteRateLimit(env, user.uid);
     const mode = parseMode(await readBody(request));
-    // A providing mode is only a UI preference in Phase A; no provider privileges are granted.
+    // Providing mode is just a UI preference; provider privileges require a separate admin-approved record.
     await env.DB.prepare(`
       UPDATE profiles SET active_mode = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       WHERE firebase_uid = ?

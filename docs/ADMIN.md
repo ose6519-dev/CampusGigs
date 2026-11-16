@@ -1,4 +1,4 @@
-# CampusGigs Admin hosting — Phase A extension
+# CampusGigs Admin hosting — Phase B
 
 The admin console is hosted separately at `https://campusgigsadmin-web.pages.dev` on a new Cloudflare Pages project **`campusgigsadmin-web`**. It is built from the same independent `ose6519-dev/CampusGigs` GitHub repository, from `apps/admin`, while the public CampusGigs site continues from `apps/web`.
 
@@ -11,13 +11,15 @@ The admin console is hosted separately at `https://campusgigsadmin-web.pages.dev
 - No admin signup button; administrator roles must be granted through an explicitly authorized, audited server-side process.
 - No CampSell database, Worker, admin hosting, or role table is referenced.
 
-## Phase A admin features
+## Admin features
 
 - Signed-in role gate and access-denied screen.
 - Responsive desktop/mobile sidebar dashboard.
 - Counts of members, new accounts, buying/providing preferences, and suspended accounts.
 - Recent members, member directory, and search (name, Firebase UID, email, city, campus).
-- Provider applications, gig moderation, bookings, disputes, and payouts appear as **disabled future-phase sections**. They perform no financial or approval operations.
+- Provider applications list with filters/search, protected R2 ID preview, approve/request-changes/reject actions, review notes and audit events.
+- Gig listings with provider details, search, moderation reasons, remove/restore actions and moderation audit events.
+- Booking, disputes and payouts remain **disabled future-phase sections**. No financial operations exist.
 - Member directory is read-only. Pagination is bounded at 25 per request, and SQLite LIKE wildcards are escaped.
 
 ## Cloudflare Pages build configuration

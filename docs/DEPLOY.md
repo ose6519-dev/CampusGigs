@@ -1,4 +1,4 @@
-# CampusGigs Phase A — deploy and verify
+# CampusGigs Phases A–B — deploy and verify
 
 This project uses the new Cloudflare `cf` CLI and `cloudflare.config.ts` for the API, and Cloudflare Pages for the React frontend. **Do not change any existing CampSell project.**
 
@@ -17,13 +17,15 @@ This project uses the new Cloudflare `cf` CLI and `cloudflare.config.ts` for the
 - Pages: `campusgigs` → `https://campusgigs-97y.pages.dev` (**GitHub-connected production deployment live**).
 - Worker: `campusgigs-api` → `https://campusgigs-api.ose6519.workers.dev` (**deployed**).
 - D1: `campusgigs-db` (`d6e582ae-173a-412d-a345-f516bd40f2f2`; first migration applied).
-- R2: `campusgigs-media` (created, reserved for provider verification files in Phase B).
+- R2: `campusgigs-media` (private provider ID evidence and gig images).
 
 The above D1 and R2 already exist under the chosen account; **do not recreate or rename them**. Never bind a CampSell resource ID.
 
 `apps/api/cloudflare.config.ts` already binds these CampusGigs resources and uses Firebase project ID `campsell-ea245` and origin `https://campusgigs-97y.pages.dev`. Keep `DB`, `MEDIA`, `FIREBASE_PROJECT_ID`, `WEB_ORIGINS` unchanged.
 
 Migration `apps/api/migrations/0001_profiles.sql` has been applied **only** to `campusgigs-db`.
+
+Phase B migration `apps/api/migrations/0002_providers_gigs.sql` adds provider applications, approvals, provider badges, gigs, gig images and admin audit events. Apply it **only** to the separate CampusGigs D1 database before updating the Worker; never touch the CampSell D1.
 
 ## Firebase login setup
 
@@ -49,17 +51,21 @@ The Worker is already deployed. Do not use `cf deploy --temporary-account`, whic
 ## Verification checklist
 
 - `npm run check` and `npm run build` succeed.
-- All four Phase A tests pass.
-- API `GET /health` reports `{ "service": "campusgigs-api", "status": "ok", "phase": "A" }`.
+- All Phase A and B tests pass.
+- API `GET /health` reports `{ "service": "campusgigs-api", "status": "ok", "phase": "B", "paymentsEnabled": false }`.
 - Without a token, `GET /v1/me` returns `401`.
 - The live homepage, category list, CampSell links and sign-in modal have been verified in the browser.
 - A real signed-in Firebase user completing an API profile request still needs end-to-end verification.
 - Sending a different UID in a profile update is rejected; callers cannot edit `role` or `account_status`.
 - `PATCH /v1/me` persists a display name, campus, city or bio in **CampusGigs D1 only**.
-- Buying/Providing switch saves the preference but does not unlock provider operations.
+- Buying/Providing switch saves the preference but only an approved provider can publish gigs.
+- An application uploads a private image through `/v1/provider/evidence`; only the D1 admin may retrieve it.
+- Admin approval creates a `provider_profiles` row; mere Firebase sign-in or `providing` mode does not.
+- A verified provider can create a gig and attach up to four images. Admin removal hides it from public listing and image endpoints.
+- Bookings and Paystack transactions remain disabled until Phases D/E.
 - Login on CampSell remains unchanged; no CampSell database or Worker is read or written.
 - The CampusGigs website links to CampSell; reciprocal CampSell link will be prepared separately, with explicit approval before any CampSell change.
 
 **Payment safety:** D1 accounting does not itself provide regulated escrow custody. Verify Paystack Starter account settlement/manual transfer capabilities and the legal basis for holding customer funds before enabling checkout.
 
-Stop here and request user confirmation before Phase B.
+Stop after Phase B and request user confirmation before beginning Phase C (browse and gig detail pages).
