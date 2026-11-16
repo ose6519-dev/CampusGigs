@@ -28,11 +28,11 @@ function MemberRows({ members, emptyText }: { members: Member[]; emptyText: stri
   return <div className="member-table-wrap"><table className="member-table">
     <thead><tr><th>Member</th><th>Location</th><th>Mode</th><th>Status</th><th>Joined</th></tr></thead>
     <tbody>{members.map(member => <tr key={member.firebase_uid}>
-      <td><div className="identity-cell"><span className="person-avatar">{(member.display_name || '?').slice(0, 1).toUpperCase()}</span><div><strong>{member.display_name || 'Member'}</strong><small>{member.email || 'Email not verified'}</small></div></div></td>
-      <td>{[member.campus, member.city].filter(Boolean).join(' · ') || 'Not set'}</td>
-      <td><span className="soft-badge">{member.active_mode === 'providing' ? 'Providing preference' : 'Buying'}</span></td>
-      <td><span className={`status-badge ${member.account_status === 'suspended' ? 'suspended' : ''}`}>● {member.account_status}</span></td>
-      <td>{timeFormat(member.created_at)}</td>
+      <td data-label="Member"><div className="identity-cell"><span className="person-avatar">{(member.display_name || '?').slice(0, 1).toUpperCase()}</span><div><strong>{member.display_name || 'Member'}</strong><small>{member.email || 'Email not verified'}</small></div></div></td>
+      <td data-label="Location">{[member.campus, member.city].filter(Boolean).join(' · ') || 'Not set'}</td>
+      <td data-label="Mode"><span className="soft-badge">{member.active_mode === 'providing' ? 'Providing preference' : 'Buying'}</span></td>
+      <td data-label="Status"><span className={`status-badge ${member.account_status === 'suspended' ? 'suspended' : ''}`}>● {member.account_status}</span></td>
+      <td data-label="Joined">{timeFormat(member.created_at)}</td>
     </tr>)}</tbody>
   </table></div>;
 }
@@ -155,7 +155,7 @@ function App() {
   const title = navigation.find(item => item.id === view)?.name || 'Overview';
   return <div className="app-layout">
     {navOpen && <button className="nav-backdrop" aria-label="Close navigation" onClick={() => setNavOpen(false)} />}
-    <aside className={`sidebar ${navOpen ? 'open' : ''}`}>
+    <aside id="admin-sidebar" className={`sidebar ${navOpen ? 'open' : ''}`}>
       <div className="sidebar-header"><div className="logo-box">CG</div><div className="logo-name">Campus<span>Gigs</span><small>ADMIN CONTROL</small></div><button className="nav-close" aria-label="Close menu" onClick={() => setNavOpen(false)}>×</button></div>
       <div className="workspace-badge"><span className="live-pulse"/> LIVE WORKSPACE <span className="pill-note">PHASE A</span></div>
       <nav aria-label="Admin sections">
@@ -168,7 +168,7 @@ function App() {
     </aside>
 
     <div className="workspace">
-      <header className="topbar"><div className="topbar-left"><button className="hamburger" onClick={() => setNavOpen(true)} aria-label="Open menu">☰</button><span className="breadcrumb">Workspace <span>/</span> <strong>{title}</strong></span></div><div className="topbar-right"><span className="secure-chip">✦ Admin secured</span><span className="header-avatar">{(user?.displayName || 'A').slice(0, 1).toUpperCase()}</span></div></header>
+      <header className="topbar"><div className="topbar-left"><button className="hamburger" onClick={() => setNavOpen(true)} aria-label="Open menu" aria-expanded={navOpen} aria-controls="admin-sidebar">☰</button><span className="breadcrumb">Workspace <span>/</span> <strong>{title}</strong></span></div><div className="topbar-right"><span className="secure-chip">✦ Admin secured</span><span className="header-avatar">{(user?.displayName || 'A').slice(0, 1).toUpperCase()}</span></div></header>
       <main className="content">
         {view === 'overview' && <>
           <div className="page-heading"><div><span className="eyebrow">MONDAY TO SUNDAY · ALWAYS ON</span><h1>Good day, <em>Admin.</em></h1><p>Here's what's happening across your CampusGigs workspace.</p></div><button className="btn btn-light" onClick={() => user && void loadOverview(user)}>↻ &nbsp; Refresh</button></div>
@@ -191,6 +191,12 @@ function App() {
         <footer className="page-footer">© {new Date().getFullYear()} CampusGigs Admin <span>·</span> Independent platform operations <span>·</span> <a href="https://campusgigs-97y.pages.dev/">Marketplace ↗</a></footer>
       </main>
     </div>
+    <nav className="admin-mobile-nav" aria-label="Mobile admin navigation">
+      <button type="button" className={view === 'overview' ? 'active' : ''} aria-current={view === 'overview' ? 'page' : undefined} onClick={() => selectView('overview')}><span aria-hidden="true">▦</span><small>Home</small></button>
+      <button type="button" className={view === 'members' ? 'active' : ''} aria-current={view === 'members' ? 'page' : undefined} onClick={() => selectView('members')}><span aria-hidden="true">◉</span><small>Members</small></button>
+      <button type="button" className={view === 'providers' ? 'active' : ''} aria-current={view === 'providers' ? 'page' : undefined} onClick={() => selectView('providers')}><span aria-hidden="true">✺</span><small>Providers</small></button>
+      <button type="button" className={navOpen ? 'active' : ''} aria-expanded={navOpen} aria-label="More admin sections" onClick={() => setNavOpen(true)}><span aria-hidden="true">☰</span><small>Menu</small></button>
+    </nav>
   </div>;
 }
 

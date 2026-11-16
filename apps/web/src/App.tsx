@@ -81,6 +81,20 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  useEffect(() => {
+    if (!authOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAuthOpen(false);
+    };
+    window.addEventListener('keydown', dismissOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', dismissOnEscape);
+    };
+  }, [authOpen]);
+
   function goTo(next: View) {
     setView(next);
     if (next === 'profile' && !user) setAuthOpen(true);
@@ -161,7 +175,7 @@ function App() {
           </nav>
           <div className="header-actions">
             <span className="eyebrow hide-mobile">MADE FOR NIGERIA</span>
-            <button className="header-profile" type="button" onClick={() => goTo('profile')}>
+            <button className="header-profile" type="button" onClick={() => goTo('profile')} aria-label={user ? 'Open my CampusGigs profile' : 'Sign in to CampusGigs'}>
               {user?.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" /> : <Icon>◉</Icon>}
               <span>{user ? 'My account' : 'Sign in'}</span>
             </button>
@@ -204,7 +218,7 @@ function App() {
       </main>
 
       <footer className="site-footer"><div className="section-wrap footer-content"><span className="footer-brand">Campus<span>Gigs.</span></span><p>Built for talent. Made for Nigeria.</p><div><a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer">CampSell ↗</a><span>© {new Date().getFullYear()} CampusGigs</span></div></div></footer>
-      <nav className="mobile-nav" aria-label="Mobile navigation"><button className={view === 'explore' ? 'active' : ''} onClick={() => goTo('explore')}><Icon>⌂</Icon><small>Explore</small></button><button className={view === 'categories' ? 'active' : ''} onClick={() => goTo('categories')}><Icon>▦</Icon><small>Categories</small></button><button className={view === 'profile' ? 'active' : ''} onClick={() => goTo('profile')}><Icon>◉</Icon><small>Profile</small></button></nav>
+      <nav className="mobile-nav" aria-label="Mobile navigation"><button className={view === 'explore' ? 'active' : ''} aria-current={view === 'explore' ? 'page' : undefined} onClick={() => goTo('explore')}><Icon>⌂</Icon><small>Explore</small></button><button className={view === 'categories' ? 'active' : ''} aria-current={view === 'categories' ? 'page' : undefined} onClick={() => goTo('categories')}><Icon>▦</Icon><small>Categories</small></button><button className={view === 'profile' ? 'active' : ''} aria-current={view === 'profile' ? 'page' : undefined} onClick={() => goTo('profile')}><Icon>◉</Icon><small>Profile</small></button><a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer" aria-label="Shop products on CampSell"><Icon>↗</Icon><small>CampSell</small></a></nav>
 
       {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss">×</button></div>}
       {authOpen && <div className="modal-layer" onMouseDown={(event) => { if (event.target === event.currentTarget) setAuthOpen(false); }}><div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className="modal-close" onClick={() => setAuthOpen(false)} aria-label="Close">×</button><div className="modal-logo">CG</div><span className="eyebrow">HELLO, CAMPUSGIGS!</span><h2 id="auth-title">{registering ? 'Create your account' : 'Welcome back.'}</h2><p>One account for CampSell and CampusGigs.</p>{!firebaseReady && <div className="auth-warning">Firebase configuration is still required before sign-in can work.</div>}<button className="google-btn" onClick={() => void googleLogin()} disabled={loading || !firebaseReady}><span>G</span> Continue with Google</button><div className="auth-divider"><span>OR USE EMAIL</span></div><form onSubmit={emailLogin}><label>Email address<input type="email" required autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="you@example.com" /></label><label>Password<input type="password" required minLength={6} autoComplete={registering ? 'new-password' : 'current-password'} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="At least 6 characters" /></label><button className="button button-dark auth-submit" type="submit" disabled={loading || !firebaseReady}>{loading ? 'Please wait…' : registering ? 'Create account' : 'Sign in'} <span>→</span></button></form><p className="auth-switch">{registering ? 'Already have an account?' : 'New around here?'} <button onClick={() => setRegistering(!registering)}>{registering ? 'Sign in' : 'Create account'}</button></p></div></div>}

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="CampusGigs Admin">
+  <rect width="512" height="512" rx="122" fill="#201e1a"/>
+  <rect x="70" y="70" width="372" height="372" rx="90" fill="#f3bd36"/>
+  <path d="M151 262c0-69 48-115 117-115 45 0 82 18 101 48l-48 34c-11-17-29-25-53-25-37 0-60 25-60 61s23 62 60 62c16 0 30-4 42-11v-27h-45v-45h100v101c-23 22-57 36-98 36-69 0-116-46-116-119Z" fill="#201e1a"/>
+  <circle cx="358" cy="151" r="23" fill="#fff"/>
+</svg>

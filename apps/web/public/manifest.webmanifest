@@ -1,0 +1,14 @@
+{
+  "id": "/",
+  "name": "CampusGigs",
+  "short_name": "CampusGigs",
+  "description": "Find services and share skills across campuses and cities in Nigeria.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fcfbf7",
+  "theme_color": "#fcfbf7",
+  "icons": [
+    { "src": "/campusgigs-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

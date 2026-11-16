@@ -1,0 +1,14 @@
+{
+  "id": "/",
+  "name": "CampusGigs Admin",
+  "short_name": "CG Admin",
+  "description": "Private administration workspace for CampusGigs.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8f8f5",
+  "theme_color": "#f8f8f5",
+  "icons": [
+    { "src": "/campusgigs-admin-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
