@@ -1,0 +1,113 @@
+/* Phase S — CampusGigs navigation, community discovery and profile polish.
+   Override earlier phase styles with scoped, responsive rules. */
+:root{--cg-ink:#1c1b18;--cg-gold:#f2c34c;--cg-line:#eae3d5}
+.app-shell{overflow-x:clip}
+.site-header{background:rgba(250,249,246,.70)!important;-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px)}
+.hero{background:transparent}
+.hero-art{background:transparent}
+.value-ribbon{background:rgba(24,22,19,.81);backdrop-filter:blur(12px)}
+.profile-page .page-title{font-size:clamp(31px,4vw,50px)}
+.profile-page .profile-layout{gap:15px;grid-template-columns:minmax(280px,340px) minmax(0,1fr)}
+.profile-page .profile-summary{background:linear-gradient(145deg,#fffefa,#f8f4e8);border:1px solid #eadfca;padding:25px;border-radius:24px}
+.profile-page .profile-avatar{width:68px;height:68px;border-radius:22px}
+.profile-page .mode-box{margin-top:15px;padding:15px;background:#fff8e8;border-radius:18px;border:1px solid #eee0bb}
+.profile-page .mode-box strong{font-size:25px}
+.profile-page .mode-box small{font-size:10px;line-height:1.4}
+.cg-profile-quick{display:grid;gap:5px;margin-top:18px}
+.cg-profile-quick button{display:flex;align-items:center;gap:8px;text-align:left;width:100%;padding:11px 12px;
+ border-radius:13px;border:1px solid transparent;background:rgba(255,255,255,.74);color:#29251c;
+ cursor:pointer;font-size:13px;font-weight:800}
+.cg-profile-quick button span{flex:1}.cg-profile-quick button:hover{border-color:#ddbd67;background:#fff}
+.profile-page .signout-button{margin-top:17px}
+.profile-personalization{margin-top:5px!important;margin-bottom:28px!important}
+.people-page{max-width:1080px}
+.cg-folks-heading{justify-content:center;text-align:center;margin-bottom:20px!important}
+.cg-folks-heading .page-title{margin:7px 0 4px;font-size:clamp(30px,5vw,48px)}
+.cg-folks-heading p{max-width:none!important}
+.people-page .cg-people-search{max-width:860px;margin:0 auto 10px;padding:9px;
+ display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;border-radius:24px;
+ border:1px solid #e8dfca;background:#fffefb;box-shadow:0 10px 36px #3324040b}
+.people-page .cg-search-main{display:flex;align-items:center;flex-direction:row;gap:7px;min-width:0;font-size:22px;color:#8b7a57;padding-left:12px}
+.people-page .cg-search-main input{border:0!important;border-radius:10px;box-shadow:none!important;
+ height:43px;min-width:0;width:100%;font-size:14px;background:transparent;outline:none}
+.people-page .cg-people-search .cg-filter-trigger{display:flex;align-items:center;gap:6px;
+ border:1px solid #eee4ce;border-radius:13px;padding:11px 12px;height:43px;background:#faf5e8;
+ color:#403829;font-size:12px;font-weight:800;cursor:pointer}
+.people-page .cg-people-search .cg-filter-trigger.selected{background:#f2d579}
+.people-page .cg-search-submit{height:43px;border-radius:13px;padding:8px 16px;font-size:12px}
+.cg-people-filter-panel{grid-column:1/-1;border-top:1px solid #eee7db;padding:13px 7px 5px;
+ display:grid;gap:12px}
+.cg-people-filter-panel .institution-fields{min-width:0}
+.cg-location-actions{display:flex;gap:8px;flex-wrap:wrap}
+.cg-location-actions button{border:1px solid #e3d3b5;background:#faf5e9;border-radius:11px;
+ min-height:38px;padding:7px 13px;color:#382f20;font-size:12px;font-weight:800;cursor:pointer}
+.cg-location-actions button:disabled{opacity:.6}
+.cg-people-filter-panel p{font-size:11px;color:#685e4b;line-height:1.6;margin:0}
+.cg-recent-searches{max-width:860px;margin:0 auto 10px;color:#746b5c;font-size:11px}
+.cg-recent-searches summary{cursor:pointer;padding:4px 10px;font-weight:700}
+.people-page .people-count{max-width:860px;margin:13px auto}
+.people-page .people-grid{display:grid!important;grid-template-columns:minmax(0,1fr)!important;
+ max-width:860px;margin:0 auto;gap:9px}
+.people-page .folk-row{width:100%;min-width:0;box-sizing:border-box;padding:13px 16px;border-radius:18px}
+.people-page .folk-info{flex:1;min-width:0}
+.people-page .folk-avatar{border-radius:50%}
+.people-page .folk-avatar img{border-radius:50%}
+.people-page .folk-follow{border-radius:20px}
+@media(min-width:851px){
+ .app-shell>.mobile-nav{position:fixed;display:flex!important;flex-direction:column;align-items:center;
+ left:8px!important;right:auto!important;top:50%!important;bottom:auto!important;
+ transform:translateY(-50%)!important;z-index:90!important;width:72px!important;max-width:72px!important;
+ margin:0!important;padding:10px 5px!important;gap:3px!important;border:1px solid #efdfbc35!important;
+ border-radius:22px!important;background:rgba(16,15,13,.78)!important;color:#fff;
+ box-shadow:0 16px 38px #18140d39!important;-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px)}
+ .app-shell>.mobile-nav button{width:61px!important;min-height:55px;flex:none!important;display:flex!important;
+ flex-direction:column;align-items:center;padding:6px 3px!important;gap:2px!important;
+ transform:none!important;color:#ebe3d0!important;background:transparent!important;border-radius:14px!important;box-shadow:none!important}
+ .app-shell>.mobile-nav button span{height:26px;width:32px;display:grid;place-items:center}
+ .app-shell>.mobile-nav button small{font-size:9px;line-height:1.15}
+ .app-shell>.mobile-nav button.active{background:#f2c34c!important;color:#1d1a14!important}
+ .app-shell>.site-header .desktop-nav{display:none!important}
+ .app-shell:not(.cg-app-chat-mode)>main{margin-left:83px}
+ .app-shell:not(.cg-app-chat-mode)>.site-footer{margin-left:83px}
+ .app-shell:not(.cg-app-chat-mode)>.site-header .header-inner{padding-left:90px}
+ .app-shell>.mobile-nav button:nth-child(3),.app-shell>.mobile-nav button:nth-child(4){box-shadow:none!important}
+}
+@media(max-width:850px){
+ .app-shell:not(.cg-app-chat-mode)>.mobile-nav{display:grid!important;
+ grid-template-columns:repeat(7,minmax(0,1fr));align-items:center;justify-items:stretch;
+ left:max(8px,env(safe-area-inset-left,0px))!important;
+ right:max(8px,env(safe-area-inset-right,0px))!important;
+ bottom:calc(9px + env(safe-area-inset-bottom,0px))!important;top:auto!important;
+ transform:none!important;width:auto!important;max-width:none!important;margin:0!important;
+ padding:5px 3px!important;gap:0!important;border-radius:21px!important;
+ background:rgba(23,22,20,.88)!important;-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
+ box-sizing:border-box;box-shadow:0 9px 38px #16130b3d!important}
+ .app-shell:not(.cg-app-chat-mode)>.mobile-nav button{width:100%;min-width:0!important;max-width:100%;
+ min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+ padding:5px 0!important;gap:2px;transform:none!important;box-shadow:none!important;
+ background:transparent!important;border-radius:13px!important}
+ .app-shell:not(.cg-app-chat-mode)>.mobile-nav button span{font-size:19px;height:25px;width:auto}
+ .app-shell:not(.cg-app-chat-mode)>.mobile-nav button small{font-size:8px;white-space:nowrap;letter-spacing:-.05px}
+ .app-shell:not(.cg-app-chat-mode)>.mobile-nav button.active{background:rgba(242,195,76,.20)!important;color:#fce39b!important}
+ .app-shell:not(.cg-app-chat-mode)>.mobile-nav button:nth-child(4){background:rgba(242,195,76,.11)!important}
+ .app-shell:not(.cg-app-chat-mode)>.mobile-nav button:nth-child(4).active{background:#f2c34c!important;color:#17150f!important}
+ .people-page .cg-people-search{grid-template-columns:minmax(0,1fr) auto;gap:6px;padding:7px}
+ .people-page .cg-search-main{padding-left:8px}
+ .people-page .cg-people-search .cg-filter-trigger{padding:9px 10px;font-size:14px}
+ .people-page .cg-people-search .cg-filter-trigger span{display:none}
+ .people-page .cg-search-submit{grid-column:1/-1;width:100%}
+ .people-page .cg-search-main input{font-size:13px}
+ .people-page .folk-row{padding:11px 12px}
+ .profile-page .profile-layout{grid-template-columns:1fr}
+ .profile-page .profile-summary,.profile-page .profile-form{padding:18px}
+ .profile-page .cg-profile-quick{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+ .profile-page .cg-profile-quick button{flex-direction:column;align-items:center;text-align:center;padding:10px 3px;font-size:11px}
+ .profile-page .cg-profile-quick button span{flex:none}
+ .profile-page .mode-box{padding:13px}
+}
+@media(max-width:380px){
+ .app-shell:not(.cg-app-chat-mode)>.mobile-nav button small{font-size:7.2px}
+ .app-shell:not(.cg-app-chat-mode)>.mobile-nav button span{font-size:17px}
+ .app-shell:not(.cg-app-chat-mode)>.mobile-nav{left:5px!important;right:5px!important}
+}
+@media(prefers-reduced-motion:reduce){.cg-profile-quick button{transition:none}}

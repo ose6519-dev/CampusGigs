@@ -1,0 +1,31 @@
+name: Phase S community interface and API checks
+on:
+  push:
+    branches: [phase-s-community-feed]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Generate Worker types and bundle
+        run: npm run build -w @campusgigs/api
+      - name: Typecheck API
+        run: npm run check -w @campusgigs/api
+      - name: API regression tests
+        run: npm test -w @campusgigs/api
+      - name: Typecheck web
+        run: npm run check -w @campusgigs/web
+      - name: Build web
+        run: npm run build -w @campusgigs/web
+      - name: Typecheck admin
+        run: npm run check -w @campusgigs/admin
+      - name: Build admin
+        run: npm run build -w @campusgigs/admin

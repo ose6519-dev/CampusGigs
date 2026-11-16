@@ -18,6 +18,9 @@ function PersonCard({person,onOpen,onFollow,following,busy}:{person:PublicPerson
 
 export function PeopleDirectory({onOpen,onBack,profileScope,user,onLogin,notice}:{onOpen:(id:string)=>void;onBack:()=>void;profileScope?:CampusScope;user:User|null;onLogin:()=>void;notice:(value:string)=>void}){
   const [q,setQ]=useState('');
+  const [filtersOpen,setFiltersOpen]=useState(false);
+  const [gps,setGps]=useState<{latitude:number;longitude:number;accuracy:number}|null>(null);
+  const [locating,setLocating]=useState(false);
   const [confirmed,setConfirmed]=useState<CampusScope>(()=>profileScope?.state?profileScope:savedScope());
   const [state,setState]=useState(()=>confirmed.state);
   const [id,setId]=useState(()=>confirmed.institutionId);
@@ -62,6 +65,15 @@ export function PeopleDirectory({onOpen,onBack,profileScope,user,onLogin,notice}
     if(entry.state!==state||entry.institutionId!==id){setPendingHistory(entry);setPending({state:entry.state,institutionId:entry.institutionId,name:''});return;}
     setQ(entry.query);
   }
+  function locate(){
+    if(!('geolocation' in navigator)){notice('This device does not support location permission.');return;}
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      ({coords})=>{setGps({latitude:coords.latitude,longitude:coords.longitude,accuracy:coords.accuracy});setLocating(false);notice('Device location received. Choose a campus or state to filter the directory.');},
+      (error)=>{setLocating(false);notice(error.code===1?'Location permission declined. You can still search manually.':'Could not determine your location. Try again outdoors.');},
+      {enableHighAccuracy:true,timeout:12000,maximumAge:0},
+    );
+  }
   function saveSearch(event:FormEvent){
     event.preventDefault();
     void searches.save({kind:'people',query:q.trim(),state,institutionId:id,category:'',location:''}).catch(err=>notice((err as Error).message));
@@ -83,9 +95,18 @@ export function PeopleDirectory({onOpen,onBack,profileScope,user,onLogin,notice}
   },[q,state,id]);
   return <section className="section-wrap page-section people-page">
     <button className="detail-back" onClick={onBack}>← Explore gigs</button>
-    <div className="discover-heading"><div><span className="eyebrow">CAMPUSGIGS COMMUNITY</span><h1 className="page-title">Find <em>folks.</em></h1><p>Meet skilled people around your campus.</p></div><div className="discover-mark">✦</div></div>
-    <form className="people-search-panel" onSubmit={saveSearch}><label>Find folks<input type="search" maxLength={80} placeholder="Name, @username, school or skill" value={q} onChange={e=>setQ(e.target.value)}/></label><InstitutionPicker idPrefix="people" state={state} institutionId={id} institutionName={school} stateRequired={false} onChange={change}/><button type="submit" className="button button-dark">Find ↗</button><button type="button" className="discover-reset" onClick={()=>setPending({state:'',institutionId:'',name:''})}>Explore all states ↗</button></form>
-    <RecentSearches entries={searches.entries} onSelect={repeat} onRemove={id=>void searches.remove(id).catch(err=>notice((err as Error).message))} onClear={()=>void searches.clear().catch(err=>notice((err as Error).message))}/>
+    <div className="discover-heading cg-folks-heading"><div><span className="eyebrow">THE CAMPUSGIGS COMMUNITY</span><h1 className="page-title">Find <em>folks.</em></h1><p>People with skills worth knowing.</p></div></div>
+    <form className="people-search-panel cg-people-search" onSubmit={saveSearch} role="search">
+      <label className="cg-search-main" aria-label="Find folks"><span aria-hidden="true">⌕</span><input type="search" maxLength={80} placeholder="Name, @username, school or skill" value={q} onChange={e=>setQ(e.target.value)}/></label>
+      <button type="button" className={filtersOpen?'cg-filter-trigger selected':'cg-filter-trigger'} aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)}>☷ <span>Filters</span>{state?' •':''}</button>
+      <button type="submit" className="button button-dark cg-search-submit">Search ↗</button>
+      {filtersOpen&&<div className="cg-people-filter-panel"><InstitutionPicker idPrefix="people" state={state} institutionId={id} institutionName={school} stateRequired={false} onChange={change}/>
+        <div className="cg-location-actions"><button type="button" onClick={locate} disabled={locating}>◎ {locating?'Locating…':gps?'Refresh device location':'Use device location'}</button>
+        <button type="button" onClick={()=>setPending({state:'',institutionId:'',name:''})}>Search all states ↗</button></div>
+        {gps&&<p role="status">GPS: {gps.latitude.toFixed(5)}, {gps.longitude.toFixed(5)} · accuracy ±{Math.ceil(gps.accuracy)} m. Directory filtering still uses members' listed state or school; your GPS coordinates are not uploaded.</p>}
+      </div>}
+    </form>
+    <details className="cg-recent-searches"><summary>Recent searches</summary><RecentSearches entries={searches.entries} onSelect={repeat} onRemove={id=>void searches.remove(id).catch(err=>notice((err as Error).message))} onClear={()=>void searches.clear().catch(err=>notice((err as Error).message))}/></details>
     {error&&<div className="discover-error" role="alert">{error}</div>}
     <div className="people-count">{loading?'Finding folks…':`${people.length} people shown · providers marked ✦`}</div>
     {loading?<div className="people-grid"><div className="discovery-skeleton"><span/><span/><span/></div><div className="discovery-skeleton"><span/><span/><span/></div></div>:people.length?<div className="people-grid">{people.map(person=><PersonCard key={person.public_id} person={person} onOpen={onOpen} onFollow={person=>void toggleFollow(person)} following={followingIds.has(person.public_id)} busy={busyId===person.public_id}/>)}</div>:<div className="discover-empty"><h2>No folks found.</h2><p>Try another school or clear your filters.</p></div>}

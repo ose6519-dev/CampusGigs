@@ -14,6 +14,7 @@ import './phase-p.css';
 import './phase-q.css';
 import './phase-r.css';
 import './phase-r2.css';
+import './phase-s.css';
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode><App /></React.StrictMode>,
