@@ -223,3 +223,24 @@ test('Fast chat polling returns only new messages, typing and read receipts with
   await assert.rejects(()=>call(route+'?after=bad-id'),/Invalid message cursor/);
   db.close();
 });
+
+
+test('Phase R activity status distinguishes recording from typing without exposing it to strangers',async()=>{
+  const {db,call,bookingId:id}=fixture();
+  const endpoint=`/v1/chats/${id}/typing`;
+  assert.equal((await call(endpoint,{uid:'provider',method:'POST',
+    body:{active:true,activity:'recording'}})).status,200);
+  const detail=(await call(`/v1/chats/${id}`)).body;
+  assert.equal(detail.otherActivity,'recording');
+  assert.equal(detail.otherTyping,true);
+  const updates=(await call(`/v1/chats/${id}/updates`)).body;
+  assert.equal(updates.otherActivity,'recording');
+  assert.equal((await call(`/v1/chats/${id}`,{uid:'stranger'})).status,404);
+  await call(endpoint,{uid:'provider',method:'POST',body:{active:true}});
+  assert.equal((await call(`/v1/chats/${id}`)).body.otherActivity,'typing');
+  await call(endpoint,{uid:'provider',method:'POST',body:{active:false}});
+  assert.equal((await call(`/v1/chats/${id}`)).body.otherActivity,null);
+  await assert.rejects(()=>call(endpoint,{uid:'provider',method:'POST',
+    body:{active:true,activity:'invalid'}}),/Invalid chat activity/);
+  db.close();
+});
