@@ -8,6 +8,7 @@ Production scope: **CampusGigs only**. No new payment or billing features; `paym
 - Searching by institution alone can locate schools nationwide and fill in the state automatically.
 - Manually choosing a state limits institution suggestions to that state; selecting a school resets the manual filter.
 - The server still rejects a school ID that does not belong to the submitted state.
+- The NDU canonical location is corrected to **Niger Delta University, Amassoma (Bayelsa)**, based on the university's official postal address; the old Yenagoa directory spelling remains a searchable alias. Existing profile campus labels are updated only where they still exactly match that imported name.
 
 ## Faculty and department selection
 
