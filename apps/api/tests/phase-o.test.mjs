@@ -83,6 +83,8 @@ test('Phase O reactions, pinning, typing and per-user wallpapers',async()=>{
     body:{clientId:randomUUID(),kind:'sticker',text:'🎉'}})).body.message;
   assert.equal((await call(`/v1/chats/${id}/messages/${item.id}/reaction`,{uid:'provider',method:'PUT',body:{emoji:'❤️'}})).status,200);
   assert.equal((await call(`/v1/chats/${id}/messages`)).body.messages[0].reactions[0].emoji,'❤️');
+  assert.equal((await call(`/v1/chats/${id}/messages/${item.id}/reaction`,{uid:'provider',method:'PUT',body:{emoji:'❤'}})).status,200);
+  assert.equal((await call(`/v1/chats/${id}/messages`)).body.messages[0].reactions[0].emoji,'❤️');
   assert.equal((await call(`/v1/chats/${id}/messages/${item.id}/pin`,{method:'PUT'})).status,200);
   assert.ok((await call(`/v1/chats/${id}/messages`)).body.messages[0].pinned_by_uid);
   assert.equal((await call(`/v1/chats/${id}/typing`,{uid:'provider',method:'POST',body:{active:true}})).status,200);
