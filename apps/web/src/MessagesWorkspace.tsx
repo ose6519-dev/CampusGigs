@@ -13,14 +13,14 @@ type ChatRow={booking_id:string;service_title:string;status:string;other_name:st
   last_cipher_version:number;last_client_id:string|null;last_sender_uid:string|null;secure:number};
 type ChatDetail={booking:{bookingId:string;serviceTitle:string;status:string;otherName:string;otherAvatar:string;
   otherCity:string;otherState:string;otherUsername:string;otherPublicId:string|null;otherKind:string;otherOnline:number};
-  preferences:{wallpaper:string;muted:number};otherReadAt:string|null;otherTyping:boolean;secure:boolean;secureSince:string|null};
+  preferences:{wallpaper:string;muted:number};otherReadAt:string|null;otherTyping:boolean;otherActivity?:'typing'|'recording'|null;secure:boolean;secureSince:string|null};
 type Reaction={message_id:string;reactor_uid:string;emoji:string};
 type Message={id:string;sender_uid:string;client_id:string;kind:'text'|'image'|'video'|'audio'|'file'|'sticker';
   body:string;upload_id:string|null;reply_to:string|null;reply_body:string|null;reply_sender:string|null;
   reply_client_id:string|null;reply_kind:string|null;reply_cipher_version:number|null;cipher_version:number;
   pinned_by_uid:string|null;created_at:string;filename:string|null;mime_type:string|null;size_bytes:number|null;media_group_id:string|null;reactions:Reaction[]};
 type MessagesPage={messages:Message[];hasMore:boolean};
-type ChatUpdates={messages:Message[];hasMore:boolean;otherReadAt:string|null;otherTyping:boolean};
+type ChatUpdates={messages:Message[];hasMore:boolean;otherReadAt:string|null;otherTyping:boolean;otherActivity?:'typing'|'recording'|null};
 type Pending={bookingId:string;clientId:string;kind:Message['kind'];preview:string;wireText:string;uploadId:string|null;replyTo:string|null;groupId?:string|null;
   state:'sending'|'sent'|'failed'};
 const pickerEmoji=['❤️','😂','👍','🔥','😮','😢','🙌','👏'];
@@ -120,6 +120,7 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
   const [recording,setRecording]=useState(false);
   const [seconds,setSeconds]=useState(0);
   const [otherTyping,setOtherTyping]=useState(false);
+  const [otherActivity,setOtherActivity]=useState<'typing'|'recording'|null>(null);
   const [otherReadAt,setOtherReadAt]=useState<string|null>(null);
   const [identity,setIdentity]=useState<Awaited<ReturnType<typeof ensureDeviceIdentity>>|null>(null);
   const [secureKey,setSecureKey]=useState<CryptoKey|null>(null);
@@ -135,6 +136,10 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
   const recorder=useRef<MediaRecorder|null>(null);
   const voiceStream=useRef<MediaStream|null>(null);
   const lastTyped=useRef(0);
+  const typingSignal=useRef(false);
+  const recordingHeartbeat=useRef<ReturnType<typeof setInterval>|null>(null);
+  const readInFlight=useRef(false);
+  const lastReadCursor=useRef('');
   const typingOff=useRef<ReturnType<typeof setTimeout>|null>(null);
   const typingVisualTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
   const previewCache=useRef<Map<string,string>>(new Map());
@@ -198,6 +203,19 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
     container.scrollTo({top:container.scrollHeight,behavior:smooth?'smooth':'instant'});
     setNewMessageCount(0);
   },[]);
+  const markRead=useCallback(async(id:string)=>{
+    if(!user||!id||selectedRef.current!==id||document.visibilityState!=='visible'||readInFlight.current)return;
+    const box=scrollRef.current;
+    if(!box||box.scrollHeight-box.scrollTop-box.clientHeight>95)return;
+    const newest=lastMessageId.current;
+    if(!newest||newest===lastReadCursor.current)return;
+    readInFlight.current=true;
+    try{
+      await apiRequest(user,`/v1/chats/${id}/read`,{method:'POST'});
+      if(selectedRef.current===id){lastReadCursor.current=newest;void refreshChats();}
+    }catch{/* A lost receipt may be retried when the timeline is checked again. */}
+    finally{readInFlight.current=false;}
+  },[user,refreshChats]);
   const refreshThread=useCallback(async(id:string,quiet=false)=>{
     if(!user||!id)return;
     try{
@@ -206,22 +224,21 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
         apiRequest<MessagesPage>(user,`/v1/chats/${id}/messages`),
       ]);
       if(selectedRef.current!==id)return;
-      setDetail(chat);setOtherTyping(chat.otherTyping);setOtherReadAt(chat.otherReadAt);
+      setDetail(chat);setOtherTyping(chat.otherTyping);setOtherActivity(chat.otherActivity||(chat.otherTyping?'typing':null));setOtherReadAt(chat.otherReadAt);
       setHasMore(page.hasMore);setMessages(page.messages);
       threadLoaded.current=true;
       const newest=page.messages.at(-1)?.id||'';
       if(newest&&newest!==lastMessageId.current){
         const last=page.messages.at(-1);
-        if((!quiet||last?.sender_uid!==user.uid)&&document.visibilityState==='visible'){
-          void apiRequest(user,`/v1/chats/${id}/read`,{method:'POST'}).then(refreshChats).catch(()=>{});
-        }
-        if(!quiet||!lastMessageId.current||last?.sender_uid===user.uid){
+        const box=scrollRef.current;
+        const atBottom=!box||box.scrollHeight-box.scrollTop-box.clientHeight<135;
+        if(!quiet||!lastMessageId.current||last?.sender_uid===user.uid||atBottom){
           requestAnimationFrame(()=>goToBottom(quiet));
         }
         lastMessageId.current=newest;
       }
     }catch(error){if(!quiet)notice(error instanceof Error?error.message:'Could not open chat');}
-  },[user,refreshChats,notice,goToBottom]);
+  },[user,notice,goToBottom]);
   const pollThread=useCallback(async(id:string)=>{
     if(!user||!id||!threadLoaded.current||pollInFlight.current)return;
     pollInFlight.current=true;
@@ -229,7 +246,7 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
       const after=lastMessageId.current;
       const updates=await apiRequest<ChatUpdates>(user,`/v1/chats/${id}/updates${after?'?after='+encodeURIComponent(after):''}`);
       if(selectedRef.current!==id)return;
-      setOtherTyping(updates.otherTyping);setOtherReadAt(updates.otherReadAt);
+      setOtherTyping(updates.otherTyping);setOtherActivity(updates.otherActivity||(updates.otherTyping?'typing':null));setOtherReadAt(updates.otherReadAt);
       if(updates.messages.length){
         const container=scrollRef.current;
         const atBottom=!container||container.scrollHeight-container.scrollTop-container.clientHeight<135;
@@ -240,10 +257,7 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
         });
         if(atBottom||latest.sender_uid===user.uid)requestAnimationFrame(()=>goToBottom());
         else setNewMessageCount(prev=>prev+updates.messages.length);
-        if(updates.messages.some(message=>message.sender_uid!==user.uid)&&document.visibilityState==='visible'){
-          void apiRequest(user,`/v1/chats/${id}/read`,{method:'POST'})
-            .then(()=>setChats(prev=>prev.map(chat=>chat.booking_id===id?{...chat,unread_count:0}:chat))).catch(()=>{});
-        }
+        // Read status follows the viewed timeline, never a message hidden below the fold.
         if(updates.hasMore)queueMicrotask(()=>{void pollThread(id);});
       }
     }catch(error){
@@ -252,7 +266,7 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
     }finally{pollInFlight.current=false;}
   },[user,goToBottom,refreshThread]);
   useEffect(()=>{
-    lastMessageId.current='';threadLoaded.current=false;setDetail(null);setMessages([]);setReply(null);setPicker(null);setActions(null);setDecoded({});setPending([]);setGalleryMessage(null);setNewMessageCount(0);
+    lastMessageId.current='';lastReadCursor.current='';threadLoaded.current=false;setOtherActivity(null);setOtherTyping(false);setDetail(null);setMessages([]);setReply(null);setPicker(null);setActions(null);setDecoded({});setPending([]);setGalleryMessage(null);setNewMessageCount(0);
     if(!selected||!user)return;
     void refreshThread(selected);
     const timer=setInterval(()=>{if(!document.hidden)void pollThread(selected);},1800);
@@ -261,6 +275,7 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
     document.addEventListener('visibilitychange',onVisible);
     return()=>{clearInterval(timer);clearInterval(catchUp);document.removeEventListener('visibilitychange',onVisible);};
   },[selected,user,refreshThread,pollThread]);
+  useEffect(()=>{if(!selected||!messages.length)return;const timer=setTimeout(()=>void markRead(selected),180);return()=>clearTimeout(timer);},[messages,selected,markRead]);
   useEffect(()=>{
     if(!messages.length)return;
     const ids=new Set(messages.map(message=>message.client_id));
@@ -306,7 +321,8 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
     input.style.height='auto';input.style.height=`${Math.min(input.scrollHeight,124)}px`;
   },[draft,selected]);
   useEffect(()=>()=>{if(typingOff.current)clearTimeout(typingOff.current);
-    if(typingVisualTimer.current)clearTimeout(typingVisualTimer.current);},[]);
+    if(typingVisualTimer.current)clearTimeout(typingVisualTimer.current);
+    if(recordingHeartbeat.current)clearInterval(recordingHeartbeat.current);},[]);
 
   function openChat(id:string){
     setSelected(id);window.history.replaceState(null,'',`/messages/${id}`);
@@ -315,17 +331,37 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
     setSelected('');window.history.replaceState(null,'','/messages');
     setSettings(false);setProfile(false);lastMessageId.current='';
   }
-  function notifyTyping(){
+  function publishActivity(bookingId:string,active:boolean,activity:'typing'|'recording'='typing'){
+    if(!user||!bookingId)return;
+    const body=active&&activity==='recording'?{active,activity}:{active};
+    void apiRequest(user,`/v1/chats/${bookingId}/typing`,{method:'POST',body:JSON.stringify(body)}).catch(()=>{
+      // Older Workers understand the original boolean typing signal only.
+      if(active&&activity==='recording')void apiRequest(user,`/v1/chats/${bookingId}/typing`,{
+        method:'POST',body:JSON.stringify({active:true})}).catch(()=>{});
+    });
+  }
+  function stopTyping(){
+    if(typingOff.current)clearTimeout(typingOff.current);
+    typingOff.current=null;lastTyped.current=0;setComposerTyping(false);
+    if(typingSignal.current&&selected)publishActivity(selected,false);
+    typingSignal.current=false;
+  }
+  function notifyTyping(value:string){
     if(!user||!selected)return;
+    if(!value.trim()){stopTyping();return;}
     setComposerTyping(true);
     if(typingVisualTimer.current)clearTimeout(typingVisualTimer.current);
-    typingVisualTimer.current=setTimeout(()=>setComposerTyping(false),1550);
-    if(Date.now()-lastTyped.current>=2800){lastTyped.current=Date.now();
-      void apiRequest(user,`/v1/chats/${selected}/typing`,{method:'POST',body:JSON.stringify({active:true})}).catch(()=>{});}
+    typingVisualTimer.current=setTimeout(()=>setComposerTyping(false),1200);
+    if(!typingSignal.current||Date.now()-lastTyped.current>4200){
+      typingSignal.current=true;lastTyped.current=Date.now();
+      publishActivity(selected,true);
+    }
     if(typingOff.current)clearTimeout(typingOff.current);
-    const bookingId=selected;
-    typingOff.current=setTimeout(()=>void apiRequest(user,`/v1/chats/${bookingId}/typing`,{
-      method:'POST',body:JSON.stringify({active:false})}).catch(()=>{}),2500);
+    const chatId=selected;
+    typingOff.current=setTimeout(()=>{
+      typingSignal.current=false;lastTyped.current=0;setComposerTyping(false);
+      publishActivity(chatId,false);
+    },1700);
   }
   const showText=(message:Message)=>message.cipher_version===1?
     decoded[message.id]?.payload.text||decoded[message.id]?.payload.filename||'':message.body;
@@ -364,7 +400,7 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
     if(!user||!selected||busy)return;
     if(kind==='text'&&!text.trim())return;
     if(detail?.secure&&!secureKey){notice('This chat needs your device encryption key before sending');return;}
-    setBusy(true);
+    stopTyping();setBusy(true);
     try{
       const clientId=crypto.randomUUID();
       const body=detail?.secure?await encryptPayload(secureKey!,selected,kind,user.uid,clientId,{text:text.trim()}):text.trim();
@@ -427,7 +463,10 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
         }catch(error){notice(error instanceof Error?error.message:'Voice note failed');}
         finally{setBusy(false);}
       };
-      recorder.current=media;media.start();setSeconds(0);setRecording(true);
+      stopTyping();recorder.current=media;media.start();setSeconds(0);setRecording(true);
+      const bookingId=selected;publishActivity(bookingId,true,'recording');
+      if(recordingHeartbeat.current)clearInterval(recordingHeartbeat.current);
+      recordingHeartbeat.current=setInterval(()=>publishActivity(bookingId,true,'recording'),3500);
     }catch{notice('Allow microphone access to send a voice note');}
   }
   function stopVoice(cancel=false){
@@ -436,6 +475,8 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
       if(cancel)(current as MediaRecorder & {datasetCancel?:boolean}).datasetCancel=true;
       current.stop();
     }
+    if(recordingHeartbeat.current){clearInterval(recordingHeartbeat.current);recordingHeartbeat.current=null;}
+    if(selected)publishActivity(selected,false);
     setRecording(false);setSeconds(0);
   }
   async function react(message:Message,emoji:string|null){
@@ -531,7 +572,7 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
         </div>
         {!!pinned.length&&<button className="cg-pin-bar" onClick={()=>{const node=document.getElementById('chat-'+pinned.at(-1)?.id);node?.scrollIntoView({block:'center',behavior:'smooth'});}}>📌 {short(showText(pinned.at(-1)!),55)}</button>}
         <div ref={scrollRef} className={`cg-chat-scroll cg-wallpaper-${detail?.preferences.wallpaper||'warm'}`} role="log" aria-label="Messages"
-          onScroll={event=>{const box=event.currentTarget;if(box.scrollHeight-box.scrollTop-box.clientHeight<70)setNewMessageCount(0);}}>
+          onScroll={event=>{const box=event.currentTarget;if(box.scrollHeight-box.scrollTop-box.clientHeight<70){setNewMessageCount(0);if(selected)void markRead(selected);}}}>
           <div className={`cg-chat-security ${detail?.secure?'cg-chat-protected':''}`}>
             {detail?.secure?<strong>🔒 Encrypted on this device</strong>
               :<><strong>◈ Standard booking chat</strong><span>Not end-to-end encrypted.</span>
@@ -608,8 +649,8 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
               item.state==='sent'?'✓ Sent · syncing':'! Not delivered'}</span></div>
             {item.state==='failed'&&<button type="button" className="cg-pending-retry" onClick={()=>void deliver(item)}>↻ Retry</button>}
           </div>)}
-          {otherTyping&&<div className="cg-floating-typing"><Avatar name={detail?.booking.otherName||'C'} src={detail?.booking.otherAvatar} size="small"/><span><i/><i/><i/></span></div>}
         </div>
+        {otherTyping&&<div className="cg-r-presence" role="status" aria-live="polite"><Avatar name={detail?.booking.otherName||'C'} src={detail?.booking.otherAvatar} size="small"/><span>{otherActivity==='recording'?<><b className="cg-r-record-dot">●</b> Recording a voice note…</>:<><i/><i/><i/><em>Typing…</em></>}</span></div>}
         {newMessageCount>0&&<button type="button" className="cg-chat-jump" onClick={()=>goToBottom(true)}>
           ↓ {newMessageCount} new {newMessageCount===1?'message':'messages'}</button>}
         <div className="cg-composer-shell">
@@ -625,7 +666,7 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
             <input ref={videoRef} type="file" multiple className="cg-file-input" accept="video/mp4,video/webm" onChange={event=>chooseAttachments(event,'video')}/>
             <input ref={fileRef} type="file" multiple className="cg-file-input" accept="application/pdf,text/plain,.doc,.docx,.xls,.xlsx" onChange={event=>chooseAttachments(event,'file')}/>
             <div className="cg-compose-field"><textarea ref={inputRef} aria-label="Message" value={draft} rows={1} maxLength={detail?.secure?1200:2000}
-              placeholder="Write a message…" onChange={event=>{setDraft(event.target.value);notifyTyping();}}
+              placeholder="Write a message…" onChange={event=>{setDraft(event.target.value);notifyTyping(event.target.value);}} onBlur={()=>stopTyping()}
               onKeyDown={event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();void send();}}}/>
               <button type="button" title="Emojis" aria-label="Emojis and stickers" onClick={()=>setPicker(picker==='emoji'?null:'emoji')}>☺</button>
               <button type="button" title="Stickers" aria-label="Stickers" onClick={()=>setPicker(picker==='sticker'?null:'sticker')}>✿</button>
