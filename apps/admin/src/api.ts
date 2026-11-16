@@ -15,6 +15,7 @@ export type Overview = {
   totals: { members: number; buying: number; providing: number; suspended: number; new_week: number };
   providers: { applicants: number; pending: number; approved: number };
   gigCounts: { total: number; active: number };
+  bookingCounts?: { total: number; pending: number };
   recent: Member[];
   phase: string;
   dataSource: string;
@@ -31,6 +32,9 @@ export type Gig = {
   price_kobo: number; delivery_days: number; location_type: string; location_name: string;
   payment_option: string; status: string; moderation_note: string; image_count: number; created_at: string;
 };
+export type AdminBooking = { id:string; service_title:string; price_kobo:number; status:string; brief:string;
+  requested_at:string; responded_at:string|null; buyer_name:string; buyer_email:string; provider_name:string };
+export type AdminBookingsResult = { bookings:AdminBooking[]; counts:{ total:number; pending:number; accepted:number; declined:number; cancelled:number }; paymentsEnabled:false };
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 

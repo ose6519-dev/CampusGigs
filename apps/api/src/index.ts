@@ -3,6 +3,7 @@ import { AdminAccessError, assertAdminAccess, escapeLike, parseMemberSearch } fr
 import { InputError, parseMode, parseProfileUpdate } from './validation';
 import type { ProfileRecord } from './types';
 import { phaseB } from './phaseB';
+import { bookings, adminBookings } from './bookings';
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
@@ -77,7 +78,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   const requestUrl = new URL(request.url);
   const path = requestUrl.pathname;
   if (path === '/health' && request.method === 'GET') {
-    return json({ service: 'campusgigs-api', status: 'ok', phase: 'C', paymentsEnabled: false });
+    return json({ service: 'campusgigs-api', status: 'ok', phase: 'D', bookingsEnabled: true, paymentsEnabled: false });
   }
   if (!path.startsWith('/v1/')) return json({ error: 'Not found' }, 404);
   if (!['GET', 'POST', 'PATCH'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
@@ -102,6 +103,8 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (phaseBResponse) return phaseBResponse;
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
 
+    if (path === '/v1/admin/bookings') return adminBookings(env, json);
+
     if (path === '/v1/admin/overview') {
       const totals = await env.DB.prepare(`
         SELECT COUNT(*) AS members,
@@ -124,7 +127,8 @@ async function route(request: Request, env: Env): Promise<Response> {
       const gigCounts = await env.DB.prepare(`
         SELECT COUNT(*) AS total, SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active FROM gigs
       `).first();
-      return json({ totals, providers, gigCounts, recent: recent.results || [], phase: 'B', dataSource: 'CampusGigs D1' });
+      const bookingCounts = await env.DB.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN status='requested' THEN 1 ELSE 0 END) AS pending FROM service_bookings`).first();
+      return json({ totals, providers, gigCounts, bookingCounts, recent: recent.results || [], phase: 'D', dataSource: 'CampusGigs D1' });
     }
 
     if (path === '/v1/admin/members') {
@@ -152,6 +156,9 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   const phaseBResponse = await phaseB({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false });
   if (phaseBResponse) return phaseBResponse;
+
+  const bookingResponse = await bookings({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit });
+  if (bookingResponse) return bookingResponse;
 
   if (path === '/v1/me' && request.method === 'GET') {
     const role = await env.DB.prepare('SELECT role FROM platform_roles WHERE firebase_uid = ?')

@@ -1,8 +1,8 @@
-# CampusGigs — Phase C
+# CampusGigs — Phase D
 
 Standalone service-marketplace foundation for Nigeria. **Not part of CampSell.**
 
-Phases A–C include:
+Phases A–D include:
 
 - Responsive gold / black / white buyer-facing website (desktop and mobile).
 - Firebase Auth (Google + email/password), using the **same Firebase project as CampSell** when configured.
@@ -19,9 +19,14 @@ Phases A–C include:
 - **Individual gig detail pages** with real R2 image galleries, public verified-provider information, price, delivery and related gigs.
 - Refresh-safe, shareable `/gigs` and `/gigs/:id` links, polished two-column phone cards and native-feeling Android/iOS layouts.
 - Compact Android/iOS-style bottom navigation and bold typography on both sites.
-- Tests for search input, SQL wildcard escaping, data visibility, auth rejection and both SQL migrations.
+- **Desktop floating bottom navigator** on the marketplace and admin dashboard, with the full desktop sidebar/header still available.
+- **Phase D service booking requests** with customer briefs, frozen service-price snapshots, idempotent request IDs, separate incoming provider requests, provider accept/decline, buyer cancellation, request history and auditable status changes.
+- **Admin booking operations**: request counts, status filters, searching by buyer, service, email or ID, and read-only request details.
+- Protected booking endpoints that only expose customer/provider records to the relevant Firebase UID; provider responses require active verified provider authorization.
+- Tests for search input, SQL wildcard escaping, data visibility, auth rejection and all three SQL migrations.
+- Phase D tests for booking validation, idempotence, actor authorization, status transition limits and schema audit triggers.
 
-**Not yet implemented:** bookings, Paystack, escrow, payouts, reviews, disputes, cron and notifications. These belong to Phases D–F. **No live payment can be charged by Phase C code.**
+**Not yet implemented:** Paystack collection, escrow, payouts, FacePay identity checks, reviews, disputes and notifications. They require separate financial/security readiness. **Phase D only sends booking requests; no live payment can be charged.**
 
 ## Structure
 
@@ -32,10 +37,13 @@ CampusGigs/
 │   │   ├── cloudflare.config.ts      # CampusGigs-only Worker/D1/R2 bindings
 │   │   ├── migrations/0001_profiles.sql
 │   │   ├── migrations/0002_providers_gigs.sql
+│   │   ├── migrations/0003_bookings.sql
 │   │   ├── src/auth.ts               # Verified Firebase JWT
 │   │   ├── src/index.ts              # Authorized API endpoints
 │   │   ├── src/phaseB.ts             # Provider workflows, R2 and gigs
 │   │   ├── src/publicGigs.ts         # Parameterized discovery query and validation
+│   │   ├── src/bookings.ts           # Scoped, auditable booking requests and admin read view
+│   │   ├── src/bookingValidation.ts  # Strict request IDs and status input
 │   │   ├── src/providerValidation.ts # Strict provider/gig input checks
 │   │   ├── src/validation.ts         # Input constraints
 │   │   └── tests/phase-a.test.mjs
@@ -45,6 +53,7 @@ CampusGigs/
 │       ├── src/ProviderWorkspace.tsx # Apply, verify, create services
 │       ├── src/BrowseGigs.tsx        # Search, filters, real gig cards
 │       ├── src/GigDetail.tsx         # Gallery, provider and price details
+│       ├── src/BookingWorkspace.tsx  # Buyer/provider request dashboard
 │       ├── src/firebase.ts           # Client-side Firebase login
 │       ├── src/api.ts                # Bearer token API calls
 │       └── src/styles.css
@@ -52,6 +61,8 @@ CampusGigs/
 │       ├── src/App.tsx              # Guarded admin dashboard and members
 │       ├── src/ProviderApprovals.tsx # Provider ID review
 │       ├── src/GigModeration.tsx     # Gig moderation
+│       ├── src/AdminBookings.tsx     # Admin booking search and tracking
+│       ├── src/phase-d.css           # Admin desktop dock and bookings UI
 │       ├── src/api.ts               # Firebase bearer-token API calls
 │       └── src/styles.css
 └── docs/DEPLOY.md                    # Setup, verification, pending choices
@@ -79,7 +90,7 @@ npm run dev:api
 Follow [docs/DEPLOY.md](docs/DEPLOY.md) for Cloudflare resource creation, migrations, Google authorised domain, and production variables.
 See [docs/ADMIN.md](docs/ADMIN.md) for the separate admin dashboard hosting and security model.
 
-## Phase A + B + C API
+## Phase A + B + C + D API
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
@@ -106,6 +117,12 @@ Only the verified Firebase UID determines profile ownership. Clients cannot set 
 | `POST` | `/v1/admin/providers/:id/review` | D1 admin | Approve/reject/request changes |
 | `GET` | `/v1/admin/gigs` | D1 admin | Moderate all gigs |
 | `POST` | `/v1/admin/gigs/:id/moderate` | D1 admin | Remove/restore listing |
+| `GET` | `/v1/bookings?role=buyer\|provider` | Firebase member | Own requests or incoming provider requests |
+| `POST` | `/v1/bookings` | Verified Firebase member | Request active approved gig; idempotent per buyer/request ID |
+| `GET` | `/v1/bookings/:id` | Buyer or provider only | Private details and status timeline |
+| `POST` | `/v1/bookings/:id/decision` | Active approved provider | Accept or decline a pending request |
+| `POST` | `/v1/bookings/:id/cancel` | Buyer only | Cancel a requested or accepted booking |
+| `GET` | `/v1/admin/bookings` | D1 admin | Read-only booking overview, status counts and details |
 
 All provider/admin actions require Firebase ID-token verification and D1 authorization. ID evidence is **never** served by a public route; private R2 keys are not returned by the application APIs. Price amounts are **integer kobo**. Images are MIME/signature validated and uploads have per-UID write limits. Provider decisions and moderation are recorded in audit tables.
 
@@ -118,6 +135,10 @@ Only active gigs belonging to active, approved providers and active accounts app
 ### Important account distinction
 
 The same Firebase project gives users the same identity on both websites. Because browser storage is origin-scoped, users may still sign in again when moving between CampSell and CampusGigs.
+
+### Phase D booking safety
+
+The service request sends a description to the provider and freezes the published service price at the time of booking. The provider can accept or decline, and the customer can cancel. Acceptance is **not an order payment, service completion confirmation, or Paystack charge**. All changes are restricted by Firebase UID and written to the D1 audit table. Even if multiple requests arrive at once, a retry with the same buyer/request ID is not charged or duplicated.
 
 ### Payment launch restriction
 

@@ -15,14 +15,16 @@ import { firebaseAuth, firebaseReady, googleProvider } from './firebase';
 import { ProviderWorkspace } from './ProviderWorkspace';
 import { BrowseGigs, FeaturedGigs } from './BrowseGigs';
 import { GigDetail } from './GigDetail';
+import { BookingWorkspace } from './BookingWorkspace';
 
-type View = 'explore' | 'categories' | 'detail' | 'provider' | 'profile';
+type View = 'explore' | 'categories' | 'detail' | 'bookings' | 'provider' | 'profile';
 
 function routeFromLocation(): { view: View; gigId: string; category: string } {
   const path = window.location.pathname;
   const gigId = path.match(/^\/gigs\/([0-9a-f-]{36})\/?$/i)?.[1] || '';
   if (gigId) return { view: 'detail', gigId, category: '' };
   if (path === '/gigs' || path === '/gigs/') return { view: 'categories', gigId: '', category: new URLSearchParams(window.location.search).get('category') || '' };
+  if (path === '/bookings' || path === '/bookings/') return { view: 'bookings', gigId: '', category: '' };
   if (path === '/provide') return { view: 'provider', gigId: '', category: '' };
   if (path === '/profile') return { view: 'profile', gigId: '', category: '' };
   return { view: 'explore', gigId: '', category: '' };
@@ -121,11 +123,11 @@ function App() {
   }, [authOpen]);
 
   function goTo(next: View) {
-    const path = ({ explore: '/', categories: '/gigs', provider: '/provide', profile: '/profile', detail: '/' } as Record<View, string>)[next];
+    const path = ({ explore: '/', categories: '/gigs', bookings: '/bookings', provider: '/provide', profile: '/profile', detail: '/' } as Record<View, string>)[next];
     window.history.pushState(null, '', path);
     setRoute({ view: next, gigId: '', category: '' });
     if (next === 'categories') setBrowseVersion((n) => n + 1);
-    if ((next === 'profile' || next === 'provider') && !user) setAuthOpen(true);
+    if ((next === 'profile' || next === 'provider' || next === 'bookings') && !user) setAuthOpen(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -213,6 +215,7 @@ function App() {
           <nav className="desktop-nav" aria-label="Main navigation">
             <button className={view === 'explore' ? 'selected' : ''} onClick={() => goTo('explore')}>Explore</button>
             <button className={view === 'categories' || view === 'detail' ? 'selected' : ''} onClick={() => goTo('categories')}>Find services</button>
+            <button className={view === 'bookings' ? 'selected' : ''} onClick={() => goTo('bookings')}>My bookings</button>
             <button className={view === 'provider' ? 'selected' : ''} onClick={() => goTo('provider')}>Become a provider</button>
             <a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer">Explore CampSell <span>↗</span></a>
           </nav>
@@ -258,7 +261,9 @@ function App() {
 
         {view === 'categories' && <BrowseGigs key={browseVersion} initialCategory={route.category} onOpen={openGig} />}
 
-        {view === 'detail' && <GigDetail gigId={route.gigId} onBack={() => goTo('categories')} onOpen={openGig} onNotice={setNotice} />}
+        {view === 'detail' && <GigDetail gigId={route.gigId} user={user} onLogin={()=>setAuthOpen(true)} onBooked={()=>goTo('bookings')} onBack={() => goTo('categories')} onOpen={openGig} onNotice={setNotice} />}
+
+        {view === 'bookings' && <BookingWorkspace user={user} onLogin={()=>setAuthOpen(true)} onBrowse={()=>goTo('categories')} notice={setNotice} />}
 
         {view === 'provider' && <ProviderWorkspace user={user} location={me?.profile.campus || me?.profile.city || ''} notice={setNotice} onLogin={() => setAuthOpen(true)} onApproved={setProviderVerified}/>}
 
@@ -266,7 +271,7 @@ function App() {
       </main>
 
       <footer className="site-footer"><div className="section-wrap footer-content"><span className="footer-brand">Campus<span>Gigs.</span></span><p>Built for talent. Made for Nigeria.</p><div><a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer">CampSell ↗</a><span>© {new Date().getFullYear()} CampusGigs</span></div></div></footer>
-      <nav className="mobile-nav" aria-label="Mobile navigation"><button className={view === 'explore' ? 'active' : ''} aria-current={view === 'explore' ? 'page' : undefined} onClick={() => goTo('explore')}><Icon>⌂</Icon><small>Explore</small></button><button className={view === 'categories' || view === 'detail' ? 'active' : ''} aria-current={view === 'categories' || view === 'detail' ? 'page' : undefined} onClick={() => goTo('categories')}><Icon>⌕</Icon><small>Gigs</small></button><button className={view === 'provider' ? 'active' : ''} aria-current={view === 'provider' ? 'page' : undefined} onClick={() => goTo('provider')}><Icon>✳</Icon><small>Provide</small></button><button className={view === 'profile' ? 'active' : ''} aria-current={view === 'profile' ? 'page' : undefined} onClick={() => goTo('profile')}><Icon>◉</Icon><small>Profile</small></button><a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer" aria-label="Shop products on CampSell"><Icon>↗</Icon><small>CampSell</small></a></nav>
+      <nav className="mobile-nav" aria-label="CampusGigs bottom navigation"><button className={view === 'explore' ? 'active' : ''} aria-current={view === 'explore' ? 'page' : undefined} onClick={() => goTo('explore')}><Icon>⌂</Icon><small>Explore</small></button><button className={view === 'categories' || view === 'detail' ? 'active' : ''} aria-current={view === 'categories' || view === 'detail' ? 'page' : undefined} onClick={() => goTo('categories')}><Icon>⌕</Icon><small>Gigs</small></button><button className={view === 'bookings' ? 'active' : ''} aria-current={view === 'bookings' ? 'page' : undefined} onClick={() => goTo('bookings')}><Icon>◷</Icon><small>Bookings</small></button><button className={view === 'provider' ? 'active' : ''} aria-current={view === 'provider' ? 'page' : undefined} onClick={() => goTo('provider')}><Icon>✦</Icon><small>Provide</small></button><button className={view === 'profile' ? 'active' : ''} aria-current={view === 'profile' ? 'page' : undefined} onClick={() => goTo('profile')}><Icon>◉</Icon><small>Profile</small></button><a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer" aria-label="Shop products on CampSell"><Icon>↗</Icon><small>CampSell</small></a></nav>
 
       {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss">×</button></div>}
       {authOpen && <div className="modal-layer" onMouseDown={(event) => { if (event.target === event.currentTarget) setAuthOpen(false); }}><div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className="modal-close" onClick={() => setAuthOpen(false)} aria-label="Close">×</button><div className="modal-logo">CG</div><span className="eyebrow">HELLO, CAMPUSGIGS!</span><h2 id="auth-title">{registering ? 'Create your account' : 'Welcome back.'}</h2><p>One account for CampSell and CampusGigs.</p>{!firebaseReady && <div className="auth-warning">Firebase configuration is still required before sign-in can work.</div>}<button className="google-btn" onClick={() => void googleLogin()} disabled={loading || !firebaseReady}><span>G</span> Continue with Google</button><div className="auth-divider"><span>OR USE EMAIL</span></div><form onSubmit={emailLogin}><label>Email address<input type="email" required autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="you@example.com" /></label><label>Password<input type="password" required minLength={6} autoComplete={registering ? 'new-password' : 'current-password'} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="At least 6 characters" /></label><button className="button button-dark auth-submit" type="submit" disabled={loading || !firebaseReady}>{loading ? 'Please wait…' : registering ? 'Create account' : 'Sign in'} <span>→</span></button></form><p className="auth-switch">{registering ? 'Already have an account?' : 'New around here?'} <button onClick={() => setRegistering(!registering)}>{registering ? 'Sign in' : 'Create account'}</button></p></div></div>}

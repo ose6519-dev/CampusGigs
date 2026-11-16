@@ -32,6 +32,15 @@ export type PublicGigPage = { gigs: PublicGig[]; nextOffset: number | null; paym
 export type PublicGigDetail = { gig: PublicGig & {
   provider_avatar: string; provider_bio: string; provider_city: string; provider_campus: string;
 }; images: string[]; related: PublicGig[]; paymentsEnabled: false };
+export type BookingStatus = 'requested' | 'accepted' | 'declined' | 'cancelled';
+export type BookingSummary = {
+  id: string; gig_id: string; service_title: string; service_category: string;
+  price_kobo: number; delivery_days: number; brief: string; status: BookingStatus;
+  requested_at: string; responded_at: string | null; updated_at: string;
+  buyer_name: string; provider_name: string; cover_image_id: string | null;
+};
+export type BookingsResponse = { bookings: BookingSummary[]; role: 'buyer' | 'provider'; paymentsEnabled: false };
+export type BookingDetail = { booking: BookingSummary; events: { from_status: BookingStatus | null; to_status: BookingStatus; created_at: string }[]; paymentsEnabled: false };
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 export const gigImageUrl = (gigId: string, imageId: string) => `${baseUrl}/v1/public/gigs/${gigId}/images/${imageId}`;
