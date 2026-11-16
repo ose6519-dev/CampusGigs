@@ -9,7 +9,7 @@ const unilag='2fa2c2a9d90565f4ef37';
 
 function fixture(){
   const db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=ON');
-  for(const file of ['0001_profiles.sql','0002_providers_gigs.sql','0003_bookings.sql','0004_member_onboarding.sql','0005_campus_social.sql','0006_institution_directory.sql','0007_phase_g_notifications.sql','0008_phase_h_academics.sql','0009_phase_i_member_discovery.sql','0010_phase_j_search.sql','0011_phase_k_ndu_location.sql'])
+  for(const file of ['0001_profiles.sql','0002_providers_gigs.sql','0003_bookings.sql','0004_member_onboarding.sql','0005_campus_social.sql','0006_institution_directory.sql','0007_phase_g_notifications.sql','0008_phase_h_academics.sql','0009_phase_i_member_discovery.sql','0010_phase_j_search.sql','0011_phase_k_ndu_location.sql','0018_phase_s_gig_social.sql'])
     db.exec(readFileSync(new URL(`../migrations/${file}`,import.meta.url),'utf8'));
   db.prepare(`INSERT INTO profiles(firebase_uid,display_name,state_name,institution_id,interests_json)
     VALUES (?,?,?,?,?)`).run('viewer','Student member','Bayelsa',ndu,'["Barbing & Grooming"]');
