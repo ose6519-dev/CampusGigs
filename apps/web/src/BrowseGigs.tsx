@@ -56,7 +56,7 @@ export function FeaturedGigs({ onOpen, onBrowse, profileScope, user }: { onOpen:
 
 type Filters = { q: string; category: string; location: string; state: string; institutionId: string; locationType: string; sort: string; minPrice: string; maxPrice: string };
 export type CampusScope = {state:string;institutionId:string;name:string};
-export function savedScope(): CampusScope {try{const data=JSON.parse(localStorage.getItem('campusgigs.scope.v1')||'{}');return {state:data.state||'',institutionId:data.institutionId||'',name:data.name||''};}catch{return {state:'',institutionId:'',name:''};}}
+export function savedScope(): CampusScope {try{const data=JSON.parse(localStorage.getItem('campusgigs.scope.v1')||'{}');return {state:data.state||'',institutionId:data.institutionId||'',name:data.institutionId==='6879021fc76ef50a3d30'?'Niger Delta University, Amassoma':data.name||''};}catch{return {state:'',institutionId:'',name:''};}}
 const initialCampusScope = (profile?:CampusScope):CampusScope => profile?.state ? profile : savedScope();
 const startingFilters = (category: string, profile?:CampusScope): Filters => ({ q: '', category, location: '', ...((({state,institutionId})=>({state,institutionId}))(initialCampusScope(profile))), locationType: '', sort: 'newest', minPrice: '', maxPrice: '' });
 function filtersFromUrl(category: string, profile?:CampusScope): Filters {
