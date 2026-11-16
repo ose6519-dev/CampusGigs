@@ -1,0 +1,21 @@
+name: Phase R editor and messaging release checks
+on:
+  push:
+    branches: [phase-r-editor-redesign]
+permissions:
+  contents: read
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Typecheck frontend
+        run: npm run check -w @campusgigs/web
+      - name: Build frontend
+        run: npm run build -w @campusgigs/web
