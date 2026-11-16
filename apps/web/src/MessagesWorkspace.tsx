@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type TouchEvent } from 'react';
 import type { User } from 'firebase/auth';
+import {createPortal} from 'react-dom';
 import {apiRequest,chatMediaBlob,uploadChatMedia} from './api';
 import {decryptAttachment,decryptPayload,encryptAttachment,encryptPayload,type SecurePayload} from './cryptoEnvelope';
 import {chatEncryption,ensureDeviceIdentity} from './secureChat';
@@ -81,11 +82,11 @@ function Media({user,bookingId,message,secretKey,meta,compact=false}:{user:User;
       {message.kind==='image'?<img className="cg-chat-image" src={url} alt={meta?.filename||message.filename||'Shared photo'} loading="lazy"/>
         :<><video className="cg-chat-video" src={url} muted playsInline preload="metadata"/><span className="cg-video-play">▶</span></>}
     </button>
-    {expanded&&<div className="cg-media-viewer" role="dialog" aria-modal="true" aria-label="View shared media">
+    {expanded&&createPortal(<div className="cg-media-viewer" role="dialog" aria-modal="true" aria-label="View shared media">
       <button className="cg-media-viewer-close" onClick={()=>setExpanded(false)} aria-label="Close media">×</button>
       {message.kind==='image'?<img src={url} alt={meta?.filename||'Shared photo'}/>
         :<video src={url} controls autoPlay playsInline/>}
-    </div>}
+    </div>,document.body)}
   </>;
   if(message.kind==='audio')return <VoicePlayer url={url}/>;
   return <a className="cg-file-bubble" href={url} download={meta?.filename||message.filename||'attachment'}><span>▤</span><span>{short(meta?.filename||message.filename||'Download file',32)}<small>{(meta?.size||message.size_bytes)?Math.round((meta?.size||message.size_bytes||0)/1024)+' KB':'File'}</small></span><span>↓</span></a>;
