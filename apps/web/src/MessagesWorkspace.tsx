@@ -61,7 +61,7 @@ function ChatThreadThumb({user,chat,identity}:{user:User;chat:ChatRow;identity:A
   },[user,chat.booking_id,chat.last_upload_id,chat.last_kind,chat.last_cipher_version,
     chat.last_body,chat.last_client_id,chat.last_sender_uid,chat.last_mime_type,identity,visible]);
   return <span className="cg-thread-mini" ref={element} aria-label={chat.last_kind==='video'?'Shared video':'Shared photo'}>
-    {src?(chat.last_kind==='video'?<video src={src} muted playsInline preload="metadata"/>:<img src={src} alt="" loading="lazy"/>):
+    {src?(chat.last_kind==='video'?<video src={src} muted playsInline preload="metadata" onLoadedMetadata={event=>{const video=event.currentTarget;if(video.duration>0)video.currentTime=Math.min(.12,video.duration/2);}}/>:<img src={src} alt="" loading="lazy"/>):
       <span aria-hidden="true">{chat.last_kind==='video'?'▶':'▣'}</span>}
     {chat.last_kind==='video'&&<span className="cg-thread-video-icon">▶</span>}
   </span>;
