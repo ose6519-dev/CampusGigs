@@ -592,7 +592,8 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
               <Avatar name={item.other_name} src={item.other_avatar}/>
               <span className="cg-thread-center"><span className="cg-thread-top"><strong>{item.other_name}</strong><small>{time(item.last_at)}</small></span>
                 <span className="cg-thread-sub">{item.other_username?'@'+item.other_username+' · ':''}{item.service_title}</span>
-                <span className="cg-thread-preview">{item.last_cipher_version===1?(listPreviews[`${item.booking_id}:${item.last_client_id}`]||'New message'):
+                <span className="cg-thread-preview">{item.last_kind==='image'?'Photo':item.last_kind==='video'?'Video':item.last_kind==='audio'?'Voice note':
+                  item.last_cipher_version===1?(listPreviews[`${item.booking_id}:${item.last_client_id}`]||'New message'):
                   item.last_body|| (item.last_kind?'📎 '+item.last_kind:'Say hello 👋')}</span></span>
               {user&&item.last_upload_id&&['image','video'].includes(item.last_kind||'')&&
                 <ChatThreadThumb key={item.last_upload_id} user={user} chat={item} identity={identity}/>}
