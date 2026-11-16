@@ -25,10 +25,13 @@ export async function recommendations({request,url,env,user,profile,json}:Recomm
   const interestExpression=categories.length?`CASE WHEN g.category IN (${placeholders}) THEN 1 ELSE 0 END`:'0';
   const query=`SELECT g.id,g.title,g.description,g.category,g.price_kobo,g.delivery_days,g.location_type,
     g.location_name,g.payment_option,g.status,g.created_at,g.updated_at,g.state_name,g.institution_id,
-    p.display_name AS provider_name,p.cg_username AS provider_username,p.campus AS provider_campus,
+    p.display_name AS provider_name,p.avatar_url AS provider_avatar,p.cg_username AS provider_username,p.campus AS provider_campus,
     pp.public_id AS provider_public_id,pp.verified_at,
     (CASE WHEN p.show_online=1 AND p.last_seen_at >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-2 minutes') THEN 1 ELSE 0 END) AS provider_online,
     (SELECT id FROM gig_images WHERE gig_id=g.id ORDER BY created_at LIMIT 1) AS cover_image_id,
+    (SELECT media_type FROM gig_images WHERE gig_id=g.id ORDER BY created_at LIMIT 1) AS cover_media_type,
+    (SELECT COUNT(*) FROM gig_likes WHERE gig_id=g.id) AS like_count,
+    (SELECT COUNT(*) FROM gig_comments WHERE gig_id=g.id AND status='visible') AS comment_count,
     ${interestExpression} AS interest_match,
     CASE WHEN EXISTS(SELECT 1 FROM provider_follows f WHERE f.provider_uid=g.provider_uid AND f.follower_uid=?) THEN 1 ELSE 0 END AS following_match
     FROM gigs g JOIN provider_profiles pp ON pp.firebase_uid=g.provider_uid

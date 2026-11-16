@@ -87,11 +87,38 @@ async function readImage(request: Request): Promise<{ bytes: Uint8Array; type: s
   return { bytes, type, ext };
 }
 
-function imageResponse(object: R2ObjectBody): Response {
+async function readGigMedia(request:Request):Promise<{bytes:Uint8Array;type:string;ext:string}>{
+  const type=(request.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
+  if(['image/jpeg','image/png','image/webp'].includes(type))return readImage(request);
+  const ext=type==='video/mp4'?'mp4':type==='video/webm'?'webm':'';
+  if(!ext)throw new InputError('Use JPEG, PNG, WebP, MP4 or WebM');
+  const limit=25*1024*1024;
+  if(Number(request.headers.get('content-length')||0)>limit)throw new InputError('Video must be 25 MB or smaller');
+  const reader=request.body?.getReader();if(!reader)throw new InputError('Choose a video');
+  const chunks:Uint8Array[]=[];let length=0;
+  while(true){
+    const {value,done}=await reader.read();if(done)break;
+    length+=value.byteLength;
+    if(length>limit){await reader.cancel();throw new InputError('Video must be 25 MB or smaller');}
+    chunks.push(value);
+  }
+  if(length<64)throw new InputError('Video is empty or invalid');
+  const bytes=new Uint8Array(length);let cursor=0;for(const chunk of chunks){bytes.set(chunk,cursor);cursor+=chunk.length;}
+  const valid=type==='video/mp4'?String.fromCharCode(...bytes.slice(4,8))==='ftyp':
+    [0x1a,0x45,0xdf,0xa3].every((byte,index)=>bytes[index]===byte);
+  if(!valid)throw new InputError('Video contents do not match the file type');
+  return {bytes,type,ext};
+}
+
+function imageResponse(object: R2ObjectBody, publicMedia = false): Response {
   return new Response(object.body, {
+    status: publicMedia && object.range ? 206 : 200,
     headers: {
       'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
-      'Cache-Control': 'private, no-store',
+      'Cache-Control': publicMedia ? 'public, max-age=86400, s-maxage=604800, immutable' : 'private, no-store',
+      'ETag': object.httpEtag,
+      'Accept-Ranges': 'bytes',
+      ...(object.range && 'offset' in object.range && typeof object.range.offset === 'number' && typeof object.range.length === 'number' ? {'Content-Range': `bytes ${object.range.offset}-${object.range.offset + object.range.length - 1}/${object.size}`} : {}),
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "default-src 'none'; sandbox",
     },
@@ -180,9 +207,12 @@ export async function phaseB(context: Context): Promise<Response | null> {
     }
     const query = publicGigQuery(filters);
     const data = await env.DB.prepare(`
-      SELECT ${publicGigFields}, p.display_name AS provider_name, p.cg_username AS provider_username, pp.public_id AS provider_public_id,
+      SELECT ${publicGigFields}, p.display_name AS provider_name, p.avatar_url AS provider_avatar, p.cg_username AS provider_username, pp.public_id AS provider_public_id,
         ${onlineExpression} AS provider_online,pp.verified_at, p.campus AS provider_campus,
-        (SELECT id FROM gig_images WHERE gig_id = g.id ORDER BY created_at LIMIT 1) AS cover_image_id
+        (SELECT id FROM gig_images WHERE gig_id = g.id ORDER BY created_at LIMIT 1) AS cover_image_id,
+        (SELECT media_type FROM gig_images WHERE gig_id = g.id ORDER BY created_at LIMIT 1) AS cover_media_type,
+        (SELECT COUNT(*) FROM gig_likes WHERE gig_id=g.id) AS like_count,
+        (SELECT COUNT(*) FROM gig_comments WHERE gig_id=g.id AND status='visible') AS comment_count
       FROM gigs g JOIN provider_profiles pp ON pp.firebase_uid = g.provider_uid
       JOIN profiles p ON p.firebase_uid = g.provider_uid
       ${query.sql}
@@ -199,25 +229,27 @@ export async function phaseB(context: Context): Promise<Response | null> {
       SELECT ${publicGigFields}, p.display_name AS provider_name, p.cg_username AS provider_username, p.avatar_url AS provider_avatar,
         pp.public_id AS provider_public_id,${onlineExpression} AS provider_online,
         COALESCE((SELECT a.accepting_bookings FROM provider_availability a WHERE a.provider_uid=g.provider_uid),1) AS accepting_bookings,
-        p.bio AS provider_bio, p.campus AS provider_campus, p.city AS provider_city, pp.verified_at
+        p.bio AS provider_bio, p.campus AS provider_campus, p.city AS provider_city, pp.verified_at,
+        (SELECT media_type FROM gig_images WHERE gig_id=g.id ORDER BY created_at LIMIT 1) AS cover_media_type
       FROM gigs g JOIN provider_profiles pp ON pp.firebase_uid = g.provider_uid
       JOIN profiles p ON p.firebase_uid = g.provider_uid
       WHERE g.id = ? AND ${publicGigWhere}
     `).bind(gigId).first<{ category: string }>();
     if (!gig) return json({ error: 'Gig not found' }, 404);
     const [images, related] = await Promise.all([
-      env.DB.prepare('SELECT id FROM gig_images WHERE gig_id = ? ORDER BY created_at ASC LIMIT 8').bind(gigId).all(),
+      env.DB.prepare('SELECT id,media_type FROM gig_images WHERE gig_id = ? ORDER BY created_at ASC LIMIT 8').bind(gigId).all(),
       env.DB.prepare(`
         SELECT g.id,g.title,g.category,g.price_kobo,g.delivery_days,g.location_type,
           p.display_name AS provider_name, pp.verified_at,
-          (SELECT id FROM gig_images WHERE gig_id = g.id ORDER BY created_at LIMIT 1) AS cover_image_id
+          (SELECT id FROM gig_images WHERE gig_id = g.id ORDER BY created_at LIMIT 1) AS cover_image_id,
+          (SELECT media_type FROM gig_images WHERE gig_id=g.id ORDER BY created_at LIMIT 1) AS cover_media_type
         FROM gigs g JOIN provider_profiles pp ON pp.firebase_uid = g.provider_uid
         JOIN profiles p ON p.firebase_uid = g.provider_uid
         WHERE g.id != ? AND g.category = ? AND ${publicGigWhere}
         ORDER BY g.created_at DESC LIMIT 3
       `).bind(gigId, gig.category).all(),
     ]);
-    return json({ gig, images: (images.results || []).map((image) => image.id), related: related.results || [], paymentsEnabled: false });
+    return json({ gig, images: (images.results || []).map((image) => image.id), media:(images.results||[]).map(row=>({id:row.id,type:row.media_type})), related: related.results || [], paymentsEnabled: false });
   }
 
   const publicImage = path.match(/^\/v1\/public\/gigs\/([0-9a-f-]+)\/images\/([0-9a-f-]+)$/i);
@@ -231,8 +263,8 @@ export async function phaseB(context: Context): Promise<Response | null> {
       WHERE i.id = ? AND g.id = ? AND g.status = 'active' AND pp.provider_status = 'active' AND p.account_status = 'active'
     `).bind(imageId, gigId).first<{ object_key: string }>();
     if (!image) return json({ error: 'Not found' }, 404);
-    const object = await env.MEDIA.get(image.object_key);
-    return object ? imageResponse(object) : json({ error: 'Not found' }, 404);
+    const object = await env.MEDIA.get(image.object_key,request.headers.has('Range')?{range:request.headers}:undefined);
+    return object && 'body' in object ? imageResponse(object,true) : json({ error: 'Not found' }, 404);
   }
 
   if (path === '/v1/me/follows' && request.method === 'GET') {
@@ -343,7 +375,8 @@ export async function phaseB(context: Context): Promise<Response | null> {
     const owner = needsAuth(user);
     const rows = await env.DB.prepare(`
       SELECT g.*, (SELECT COUNT(*) FROM gig_images WHERE gig_id=g.id) AS image_count,
-      (SELECT id FROM gig_images WHERE gig_id=g.id ORDER BY created_at LIMIT 1) AS cover_image_id
+      (SELECT id FROM gig_images WHERE gig_id=g.id ORDER BY created_at LIMIT 1) AS cover_image_id,
+      (SELECT media_type FROM gig_images WHERE gig_id=g.id ORDER BY created_at LIMIT 1) AS cover_media_type
       FROM gigs g WHERE provider_uid = ? ORDER BY created_at DESC LIMIT 100
     `).bind(owner.uid).all();
     return json({ gigs: rows.results || [] });
@@ -387,9 +420,9 @@ export async function phaseB(context: Context): Promise<Response | null> {
     `).bind(gigId, owner.uid).first<{ id: string; status: string; image_count: number }>();
     if (!existing || existing.status === 'removed') return json({ error: 'Gig not found or not editable' }, 404);
     if (existing.image_count >= 4) throw new InputError('Maximum four images per gig');
-    const image = await readImage(request);
+    const image = await readGigMedia(request);
     const imageId = crypto.randomUUID();
-    const key = `gig-images/${gigId}/${imageId}.${image.ext}`;
+    const key = `gig-media/${gigId}/${imageId}.${image.ext}`;
     await env.MEDIA.put(key, image.bytes, { httpMetadata: { contentType: image.type } });
     try {
       const inserted = await env.DB.prepare(`

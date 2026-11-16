@@ -12,6 +12,7 @@ import { community } from './community.ts';
 import { searchAccount } from './searchAccount.ts';
 import { recommendations } from './recommendations.ts';
 import { chats } from './chats.ts';
+import { gigSocial } from './gigSocial.ts';
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
@@ -93,7 +94,8 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
 
   if (path.startsWith('/v1/public/')) {
-    return await community({ request, url: requestUrl, env, user: null, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false })
+    return await gigSocial({request,url:requestUrl,env,user:null,json,readJson:readBody,rateLimit:checkWriteRateLimit,isAdmin:false})
+      || await community({ request, url: requestUrl, env, user: null, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false })
       || await phaseB({ request, url: requestUrl, env, user: null, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false })
       || json({ error: 'Not found' }, 404);
   }
@@ -109,6 +111,8 @@ async function route(request: Request, env: Env): Promise<Response> {
     `).bind(user.uid).first<{ role: string; account_status: string }>();
     assertAdminAccess(grant?.role, user.emailVerified, grant?.account_status);
 
+    const socialAdmin = await gigSocial({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: true });
+    if (socialAdmin) return socialAdmin;
     const phaseBResponse = await phaseB({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: true });
     if (phaseBResponse) return phaseBResponse;
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
@@ -169,6 +173,9 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   const searchAccountResponse=await searchAccount({request,url:requestUrl,env,user,json,readJson:readBody,rateLimit:checkWriteRateLimit});
   if(searchAccountResponse)return searchAccountResponse;
+
+  const socialResponse = await gigSocial({request,url:requestUrl,env,user,json,readJson:readBody,rateLimit:checkWriteRateLimit,isAdmin:false});
+  if(socialResponse)return socialResponse;
 
   const communityResponse = await community({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false });
   if (communityResponse) return communityResponse;

@@ -36,17 +36,20 @@ export type ProviderApplication = {
 export type ProviderStatus = { application: ProviderApplication | null; verified: boolean; provider: { provider_status: string; verified_at: string } | null };
 export type ProviderAvailability = { acceptingBookings:boolean;activeBookings:number };
 export type Gig = { id: string; title: string; description: string; category: string; price_kobo: number; delivery_days: number;
-  location_name: string; location_type: string; payment_option: string; status: string; cover_image_id: string | null; image_count: number; created_at: string };
+  location_name: string; location_type: string; payment_option: string; status: string; cover_image_id: string | null; cover_media_type?:string|null; image_count: number; created_at: string };
 export type ProviderGigs = { gigs: Gig[] };
 
 export type PublicGig = Pick<Gig, 'id' | 'title' | 'description' | 'category' | 'price_kobo' | 'delivery_days' | 'location_name' | 'location_type' | 'payment_option' | 'cover_image_id' | 'created_at'> & {
-  provider_name: string; provider_username?:string; provider_campus?: string; verified_at: string; provider_public_id?: string; provider_online?: 0 | 1;
+  provider_name: string; provider_username?:string; provider_campus?: string; provider_avatar?: string; verified_at: string; provider_public_id?: string; provider_online?: 0 | 1;
+  cover_media_type?: string | null; like_count?:number; comment_count?:number;
   state_name: string; institution_id: string | null;
 };
 export type PublicGigPage = { gigs: PublicGig[]; nextOffset: number | null; paymentsEnabled: false };
 export type PublicGigDetail = { gig: PublicGig & {
   provider_avatar: string; provider_bio: string; provider_city: string; provider_campus: string;accepting_bookings:0|1;
-}; images: string[]; related: PublicGig[]; paymentsEnabled: false };
+}; images: string[]; media?:{id:string;type:string}[]; related: PublicGig[]; paymentsEnabled: false };
+export type GigSocialComment = {id:string;body:string;created_at:string;display_name:string;avatar_url:string;author_public_id:string};
+export type GigSocial = {likeCount:number;commentCount:number;comments:GigSocialComment[];nextOffset:number|null};
 export type Institution = {id:string;name:string;state_name:string;institution_type:'university'|'polytechnic'|'college';aliases:string};
 export type PublicProvider = {public_id:string;display_name:string;cg_username:string;avatar_url:string;bio:string;campus:string;city:string;
   state_name:string;institution_id:string|null;verified_at:string;online:0|1;follower_count:number;gig_count?:number;

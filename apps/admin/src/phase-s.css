@@ -1,0 +1,16 @@
+/* Phase S — Moderation controls for real community comments. */
+.cg-admin-comments{margin-top:24px;padding:22px}
+.cg-admin-comments .page-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 17px}
+.cg-admin-comments .page-heading h2{margin:5px 0;color:#25211b;font-size:24px}
+.cg-admin-comments .page-heading p{margin:0;color:#716a5e;font-size:12px}
+.cg-admin-comment-list{display:grid;gap:10px}
+.cg-admin-comment{border:1px solid #eae4d7;background:#fffefa;padding:14px 16px;border-radius:16px}
+.cg-admin-comment>div:first-child{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cg-admin-comment strong{font-size:13px;color:#231e18}
+.cg-admin-comment small{font-size:10px;color:#756d62}
+.cg-admin-comment p{font-size:13px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;color:#4a4135;margin:10px 0}
+.cg-admin-comment .review-pill{font-size:10px;padding:4px 7px;border-radius:8px;background:#f2e4ba}
+.cg-admin-comment .review-pill.hidden{background:#f0d5d0;color:#a02a1c}
+.cg-admin-comment .moderation-action{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.cg-admin-comment .moderation-action input{flex:1;min-width:170px;min-height:37px;border:1px solid #e3dbcc;padding:8px 12px;border-radius:10px}
+@media(max-width:700px){.cg-admin-comments{padding:12px}.cg-admin-comment{padding:11px}.cg-admin-comment .moderation-action input{width:100%;flex-basis:100%}}
