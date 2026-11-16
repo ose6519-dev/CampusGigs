@@ -9,6 +9,7 @@ import { findInstitution, institutionIdPattern, nigeriaStates } from './institut
 import { notifications } from './notifications.ts';
 import { parseAcademics } from './academicValidation.ts';
 import { community } from './community.ts';
+import { searchAccount } from './searchAccount.ts';
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
@@ -67,9 +68,9 @@ async function checkWriteRateLimit(env: Env, uid: string, route = 'profile', max
 async function ensureProfile(env: Env, uid: string, email: string, displayName: string, picture: string): Promise<ProfileRecord> {
   const safeName = displayName.trim().slice(0, 60) || 'CampusGigs member';
   await env.DB.prepare(`
-    INSERT OR IGNORE INTO profiles (firebase_uid, email, display_name, avatar_url)
-    VALUES (?, ?, ?, ?)
-  `).bind(uid, email, safeName, picture.startsWith('https://') ? picture : '').run();
+    INSERT OR IGNORE INTO profiles (firebase_uid, email, display_name, avatar_url, cg_username)
+    VALUES (?, ?, ?, ?, ?)
+  `).bind(uid, email, safeName, picture.startsWith('https://') ? picture : '', 'cg'+crypto.randomUUID().replaceAll('-','').slice(0,16)).run();
 
   await env.DB.prepare('UPDATE profiles SET email = ? WHERE firebase_uid = ? AND email != ?')
     .bind(email, uid, email).run();
@@ -83,7 +84,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   const requestUrl = new URL(request.url);
   const path = requestUrl.pathname;
   if (path === '/health' && request.method === 'GET') {
-    return json({ service: 'campusgigs-api', status: 'ok', phase: 'I', bookingsEnabled: true, paymentsEnabled: false });
+    return json({ service: 'campusgigs-api', status: 'ok', phase: 'J', bookingsEnabled: true, paymentsEnabled: false });
   }
   if (!path.startsWith('/v1/')) return json({ error: 'Not found' }, 404);
   if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
@@ -162,6 +163,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (!profile.onboarding_completed && path !== '/v1/me' && path !== '/v1/me/onboarding') {
     return json({ error: 'Complete your CampusGigs welcome setup first' }, 403);
   }
+
+  const searchAccountResponse=await searchAccount({request,url:requestUrl,env,user,json,readJson:readBody,rateLimit:checkWriteRateLimit});
+  if(searchAccountResponse)return searchAccountResponse;
 
   const communityResponse = await community({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false });
   if (communityResponse) return communityResponse;

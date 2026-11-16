@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { gigImageUrl, publicRequest, type PublicGig, type PublicGigPage } from './api';
 import { InstitutionPicker } from './InstitutionPicker';
 import { serviceCatalog, serviceCategories } from './serviceCatalog';
+import type { User } from 'firebase/auth';
+import {RecentSearches,useSearchHistory,type SearchEntry} from './SearchHistory';
 
 export const gigCategories = serviceCategories;
 
@@ -18,7 +20,7 @@ export function GigCard({ gig, onOpen }: { gig: PublicGig; onOpen: (id: string) 
       <span className="discovery-category">{gig.category}</span>
     </div>
     <div className="discovery-info">
-      <span className="discovery-provider">{gig.provider_name || 'CampusGigs provider'} <span className="verified-mini" title="Admin-verified provider" aria-label="Verified provider">✓</span>{gig.provider_online===1&&<i className="online-dot" title="Provider online" aria-label="Provider online"/>}</span>
+      <span className="discovery-provider">{gig.provider_name || 'CampusGigs provider'} {gig.provider_username&&<small>@{gig.provider_username}</small>} <span className="verified-mini" title="Admin-verified provider" aria-label="Verified provider">✓</span>{gig.provider_online===1&&<i className="online-dot" title="Provider online" aria-label="Provider online"/>}</span>
       <strong className="discovery-title">{gig.title}</strong>
       <div className="discovery-secondary"><span>◷ {gig.delivery_days} {gig.delivery_days === 1 ? 'day' : 'days'}</span><span>◎ {gig.location_type === 'online' ? 'Online' : gig.location_name || 'Local'}</span></div>
       <div className="discovery-bottom"><span><small>FROM</small><strong>{naira(gig.price_kobo)}</strong></span><span className="discovery-arrow" aria-hidden="true">↗</span></div>
@@ -66,11 +68,12 @@ function filtersFromUrl(category: string, profile?:CampusScope): Filters {
   return current;
 }
 
-export function BrowseGigs({ initialCategory, onOpen, onPeople, profileScope }: { initialCategory: string; onOpen: (id: string) => void; onPeople: () => void; profileScope?:CampusScope }) {
+export function BrowseGigs({ initialCategory, onOpen, onPeople, profileScope, user, notice }: { initialCategory: string; onOpen: (id: string) => void; onPeople: () => void; profileScope?:CampusScope;user:User|null;notice:(message:string)=>void }) {
   const [filters, setFilters] = useState<Filters>(() => filtersFromUrl(initialCategory,profileScope));
   const [campusName,setCampusName]=useState(()=>initialCampusScope(profileScope).name);
   const [approvedScope,setApprovedScope]=useState(()=>initialCampusScope(profileScope));
   const [pendingScope,setPendingScope]=useState<{state:string;institutionId:string;name:string}|null>(null);
+  const [pendingHistory,setPendingHistory]=useState<SearchEntry|null>(null);
   const [query, setQuery] = useState(filters.q);
   const [locationText, setLocationText] = useState(filters.location);
   const [gigs, setGigs] = useState<PublicGig[]>([]);
@@ -79,6 +82,7 @@ export function BrowseGigs({ initialCategory, onOpen, onPeople, profileScope }: 
   const [moreLoading, setMoreLoading] = useState(false);
   const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
+  const searches=useSearchHistory(user,'gigs');
 
   useEffect(()=>{
     if(!profileScope?.state)return;
@@ -134,7 +138,18 @@ export function BrowseGigs({ initialCategory, onOpen, onPeople, profileScope }: 
   }
 
   function clear() { setQuery(''); setLocationText(''); setFilters(old=>({...startingFilters('',profileScope),state:old.state,institutionId:old.institutionId})); }
-  function submit(event: FormEvent) { event.preventDefault(); setFilters((old) => ({ ...old, q: query, location: locationText })); }
+  function submit(event: FormEvent) {
+    event.preventDefault();setFilters((old) => ({ ...old, q: query, location: locationText }));
+    void searches.save({kind:'gigs',query:query.trim(),state:filters.state,institutionId:filters.institutionId,category:filters.category,location:locationText.trim()})
+      .catch(err=>notice((err as Error).message));
+  }
+  function applyHistory(entry:SearchEntry){
+    if(entry.state!==filters.state||entry.institutionId!==filters.institutionId){
+      setPendingHistory(entry);setPendingScope({state:entry.state,institutionId:entry.institutionId,name:''});return;
+    }
+    setQuery(entry.query);setLocationText(entry.location);
+    setFilters(old=>({...old,q:entry.query,category:entry.category,location:entry.location}));
+  }
 
   return <section className="section-wrap discover-page page-section">
     <div className="discover-heading"><div><span className="eyebrow">THE CAMPUSGIGS MARKETPLACE</span><h1 className="page-title">Find your <em>people.</em></h1><p>Real skills. Verified providers. Find a service that fits.</p></div><div className="discover-mark" aria-hidden="true">✦</div></div>
@@ -147,6 +162,7 @@ export function BrowseGigs({ initialCategory, onOpen, onPeople, profileScope }: 
       <label className="discovery-location"><span aria-hidden="true">◎</span><input value={locationText} onChange={(event) => setLocationText(event.target.value)} placeholder="City / neighbourhood (optional)" maxLength={100} aria-label="Search city or neighbourhood" /></label>
       <button type="submit" className="button button-dark">Search <span>↗</span></button>
     </form>
+    <RecentSearches entries={searches.entries} onSelect={applyHistory} onRemove={id=>void searches.remove(id).catch(err=>notice((err as Error).message))} onClear={()=>void searches.clear().catch(err=>notice((err as Error).message))}/>
     <div className="discover-community-link"><span>Meet trusted service providers.</span><button type="button" onClick={onPeople}>Find folks ↗</button></div>
     <div className="discover-chips" aria-label="Filter gigs by skill category"><button className={!filters.category ? 'chosen' : ''} onClick={() => setFilter('category', '')}>All skills</button>{gigCategories.map((name) => <button className={filters.category === name ? 'chosen' : ''} key={name} onClick={() => setFilter('category', name)}>{name}</button>)}</div>
     <div className="discover-tools"><div className="discover-tools-heading"><strong>Explore gigs</strong><span>{loading ? 'Searching…' : `${gigs.length} ${gigs.length === 1 ? 'service' : 'services'} shown`}</span></div><div className="discover-selects">
@@ -158,6 +174,6 @@ export function BrowseGigs({ initialCategory, onOpen, onPeople, profileScope }: 
     {error && <div className="discover-error" role="alert">{error}<button onClick={() => setVersion((n) => n + 1)}>Retry</button></div>}
     {loading ? <div className="discovery-grid" aria-label="Loading services">{Array.from({ length: 6 }, (_, i) => <div className="discovery-skeleton" key={i}><span /><span /><span /></div>)}</div> : gigs.length ? <><div className="discovery-grid">{gigs.map((gig) => <GigCard key={gig.id} gig={gig} onOpen={onOpen} />)}</div>{offset !== null && <div className="more-row"><button className="button button-ghost" onClick={() => void loadMore()} disabled={moreLoading}>{moreLoading ? 'Loading…' : 'Load more services'} <span>↓</span></button></div>}</> : !error && <div className="discover-empty"><div className="discover-empty-icon">✦</div><h2>No gigs found yet.</h2><p>{filters.category || filters.q || filters.location || filters.locationType || filters.minPrice || filters.maxPrice ? 'Try clearing your filters or exploring another skill.' : 'Verified providers are getting ready. Check back as services are published.'}</p><button className="button button-dark" onClick={clear}>View all skills <span>↗</span></button></div>}
     <div className="discovery-footnote">Locations are based on provider-listed areas, not real-time device tracking. Always confirm where the service will happen before booking.</div>
-    {pendingScope&&<div className="modal-layer" role="presentation"><div className="scope-warning" role="dialog" aria-modal="true" aria-labelledby="scope-warning-title"><span className="scope-warning-icon">◎</span><span className="eyebrow">LOCATION REMINDER</span><h2 id="scope-warning-title">Browsing outside your campus?</h2><p>{pendingScope.state?`You're switching to ${pendingScope.name||pendingScope.state}.`:'You are about to view services from across Nigeria.'} Travel and availability may be different. Confirm the provider's location before sending a booking request.</p><div><button type="button" className="button button-ghost" onClick={()=>setPendingScope(null)}>Stay here</button><button type="button" className="button button-dark" onClick={()=>{applyScope(pendingScope.state,pendingScope.institutionId,pendingScope.name);setPendingScope(null);}}>Continue ↗</button></div></div></div>}
+    {pendingScope&&<div className="modal-layer" role="presentation"><div className="scope-warning" role="dialog" aria-modal="true" aria-labelledby="scope-warning-title"><span className="scope-warning-icon">◎</span><span className="eyebrow">LOCATION REMINDER</span><h2 id="scope-warning-title">Browsing outside your campus?</h2><p>{pendingScope.state?`You're switching to ${pendingScope.name||pendingScope.state}.`:'You are about to view services from across Nigeria.'} Travel and availability may be different. Confirm the provider's location before sending a booking request.</p><div><button type="button" className="button button-ghost" onClick={()=>{setPendingScope(null);setPendingHistory(null);}}>Stay here</button><button type="button" className="button button-dark" onClick={()=>{applyScope(pendingScope.state,pendingScope.institutionId,pendingScope.name);if(pendingHistory){setQuery(pendingHistory.query);setLocationText(pendingHistory.location);setFilters(old=>({...old,q:pendingHistory.query,category:pendingHistory.category,location:pendingHistory.location}));}setPendingScope(null);setPendingHistory(null);}}>Continue ↗</button></div></div></div>}
   </section>;
 }

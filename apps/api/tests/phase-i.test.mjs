@@ -6,7 +6,7 @@ import {community} from '../src/community.ts';
 
 function fixture(){
   const db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=ON');
-  for(const file of ['0001_profiles.sql','0002_providers_gigs.sql','0003_bookings.sql','0004_member_onboarding.sql','0005_campus_social.sql','0006_institution_directory.sql','0007_phase_g_notifications.sql','0008_phase_h_academics.sql','0009_phase_i_member_discovery.sql'])
+  for(const file of ['0001_profiles.sql','0002_providers_gigs.sql','0003_bookings.sql','0004_member_onboarding.sql','0005_campus_social.sql','0006_institution_directory.sql','0007_phase_g_notifications.sql','0008_phase_h_academics.sql','0009_phase_i_member_discovery.sql','0010_phase_j_search.sql'])
     db.exec(readFileSync(new URL(`../migrations/${file}`,import.meta.url),'utf8'));
   const bay=db.prepare("SELECT id,name FROM institutions WHERE state_name='Bayelsa' AND aliases LIKE '%NDU%' LIMIT 1").get();
   const lag=db.prepare("SELECT id,name FROM institutions WHERE state_name='Lagos' AND aliases LIKE '%UNILAG%' LIMIT 1").get();

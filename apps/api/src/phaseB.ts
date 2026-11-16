@@ -119,27 +119,27 @@ export async function phaseB(context: Context): Promise<Response | null> {
       const institution = await findInstitution(env, filters.institutionId);
       if (filters.state && institution.state_name !== filters.state) throw new InputError('Institution is outside the selected state');
     }
-    const query = `SELECT pp.public_id,p.display_name,p.avatar_url,p.bio,p.campus,p.city,p.state_name,p.institution_id,
+    const query = `SELECT pp.public_id,p.display_name,p.cg_username,p.avatar_url,p.bio,p.campus,p.city,p.state_name,p.institution_id,
       pp.verified_at,${onlineExpression} AS online,
       (SELECT COUNT(*) FROM provider_follows f WHERE f.provider_uid=pp.firebase_uid) AS follower_count,
       (SELECT COUNT(*) FROM gigs g WHERE g.provider_uid=pp.firebase_uid AND g.status='active') AS gig_count
       FROM provider_profiles pp JOIN profiles p ON p.firebase_uid=pp.firebase_uid
       WHERE pp.provider_status='active' AND pp.public_id IS NOT NULL AND p.account_status='active'
         AND (?='' OR p.state_name=?) AND (?='' OR p.institution_id=?)
-        AND (?='' OR p.display_name LIKE ? ESCAPE '\\' OR p.campus LIKE ? ESCAPE '\\' OR p.bio LIKE ? ESCAPE '\\'
+        AND (?='' OR p.display_name LIKE ? ESCAPE '\\' OR p.cg_username LIKE ? ESCAPE '\\' OR p.campus LIKE ? ESCAPE '\\' OR p.bio LIKE ? ESCAPE '\\'
           OR EXISTS(SELECT 1 FROM provider_applications a WHERE a.firebase_uid=pp.firebase_uid AND a.skill_categories LIKE ? ESCAPE '\\')
           OR EXISTS(SELECT 1 FROM gigs search_gig WHERE search_gig.provider_uid=pp.firebase_uid
             AND search_gig.status='active' AND (search_gig.category LIKE ? ESCAPE '\\' OR search_gig.title LIKE ? ESCAPE '\\')))
       ORDER BY online DESC, gig_count DESC,pp.verified_at DESC LIMIT ?`;
     const results = await env.DB.prepare(query).bind(filters.state,filters.state,filters.institutionId,filters.institutionId,
-      filters.q,queryPattern,queryPattern,queryPattern,queryPattern,queryPattern,queryPattern,filters.limit).all();
+      filters.q,queryPattern,queryPattern,queryPattern,queryPattern,queryPattern,queryPattern,queryPattern,filters.limit).all();
     return json({ providers: results.results || [] });
   }
 
   const publicProvider = path.match(/^\/v1\/public\/providers\/([0-9a-f]{32})$/i);
   if (publicProvider && request.method === 'GET') {
     if (!publicProviderIdPattern.test(publicProvider[1])) return json({ error: 'Not found' }, 404);
-    const provider = await env.DB.prepare(`SELECT pp.firebase_uid AS private_uid,pp.public_id,p.display_name,p.avatar_url,
+    const provider = await env.DB.prepare(`SELECT pp.firebase_uid AS private_uid,pp.public_id,p.display_name,p.cg_username,p.avatar_url,
       p.bio,p.campus,p.city,p.state_name,p.institution_id,pp.verified_at,${onlineExpression} AS online,
       (SELECT COUNT(*) FROM provider_follows f WHERE f.provider_uid=pp.firebase_uid) AS follower_count
       FROM provider_profiles pp JOIN profiles p ON p.firebase_uid=pp.firebase_uid
@@ -165,7 +165,7 @@ export async function phaseB(context: Context): Promise<Response | null> {
     }
     const query = publicGigQuery(filters);
     const data = await env.DB.prepare(`
-      SELECT ${publicGigFields}, p.display_name AS provider_name, pp.public_id AS provider_public_id,
+      SELECT ${publicGigFields}, p.display_name AS provider_name, p.cg_username AS provider_username, pp.public_id AS provider_public_id,
         ${onlineExpression} AS provider_online,pp.verified_at, p.campus AS provider_campus,
         (SELECT id FROM gig_images WHERE gig_id = g.id ORDER BY created_at LIMIT 1) AS cover_image_id
       FROM gigs g JOIN provider_profiles pp ON pp.firebase_uid = g.provider_uid
@@ -181,7 +181,7 @@ export async function phaseB(context: Context): Promise<Response | null> {
     const gigId = publicDetail[1];
     if (!uuidPattern.test(gigId)) return json({ error: 'Not found' }, 404);
     const gig = await env.DB.prepare(`
-      SELECT ${publicGigFields}, p.display_name AS provider_name, p.avatar_url AS provider_avatar,
+      SELECT ${publicGigFields}, p.display_name AS provider_name, p.cg_username AS provider_username, p.avatar_url AS provider_avatar,
         pp.public_id AS provider_public_id,${onlineExpression} AS provider_online,
         p.bio AS provider_bio, p.campus AS provider_campus, p.city AS provider_city, pp.verified_at
       FROM gigs g JOIN provider_profiles pp ON pp.firebase_uid = g.provider_uid

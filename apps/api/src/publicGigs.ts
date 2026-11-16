@@ -89,11 +89,11 @@ export function publicGigQuery(filters: PublicGigFilters): { sql: string; params
   const params: Array<string | number> = [];
   if (filters.q) {
     for (const word of serviceSearchWords(filters.q)) {
-      const pattern = `%${escaped(word)}%`;
+      const pattern = `%${escaped(word.replace(/^@/,''))}%`;
       const words = [`g.title LIKE ? ESCAPE '\\'`, `g.description LIKE ? ESCAPE '\\'`,
         `g.category LIKE ? ESCAPE '\\'`, `p.display_name LIKE ? ESCAPE '\\'`,
-        `g.location_name LIKE ? ESCAPE '\\'`, `p.campus LIKE ? ESCAPE '\\'`];
-      params.push(pattern,pattern,pattern,pattern,pattern,pattern);
+        `g.location_name LIKE ? ESCAPE '\\'`, `p.campus LIKE ? ESCAPE '\\'`, `p.cg_username LIKE ? ESCAPE '\\'`];
+      params.push(pattern,pattern,pattern,pattern,pattern,pattern,pattern);
       const aliases=tradeAliases[word.toLowerCase()]||[];
       for (const category of aliases) {words.push('g.category = ?');params.push(category);}
       where.push(`(${words.join(' OR ')})`);
@@ -119,6 +119,16 @@ export function publicGigQuery(filters: PublicGigFilters): { sql: string; params
     price_high: 'g.price_kobo DESC, g.id DESC',
     fastest: 'g.delivery_days ASC, g.id DESC',
   };
-  return { sql: `WHERE ${where.join(' AND ')} ORDER BY ${orders[filters.sort]} LIMIT ? OFFSET ?`,
+  const q=filters.q.trim().replace(/^@/,'');
+  const ranking=filters.sort==='newest'&&q?
+    `CASE WHEN lower(p.cg_username)=lower(?) THEN 0
+      WHEN lower(g.title)=lower(?) THEN 1
+      WHEN lower(g.category)=lower(?) THEN 2
+      WHEN lower(p.display_name)=lower(?) THEN 3
+      WHEN lower(p.cg_username) LIKE lower(?) ESCAPE '\\' THEN 4
+      WHEN lower(g.title) LIKE lower(?) ESCAPE '\\' THEN 5
+      ELSE 6 END ASC, `:'';
+  if(ranking)params.push(q,q,q,q,`${escaped(q)}%`,`${escaped(q)}%`);
+  return { sql: `WHERE ${where.join(' AND ')} ORDER BY ${ranking}${orders[filters.sort]} LIMIT ? OFFSET ?`,
     params: [...params, filters.limit + 1, filters.offset] };
 }

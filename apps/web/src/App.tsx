@@ -341,7 +341,7 @@ function App() {
           <section className="section-wrap connect-panel"><div><span className="eyebrow">TWO WORLDS. ONE COMMUNITY.</span><h2>Looking for products<br />instead of services?</h2><p>CampusGigs is for skills and services. Shop physical goods on CampSell.</p></div><a className="button button-gold" href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer">Explore CampSell <span>↗</span></a></section>
         </>}
 
-        {view === 'categories' && <BrowseGigs key={browseVersion} initialCategory={route.category} onOpen={openGig} onPeople={()=>goTo('people')} profileScope={{state:me?.profile.state_name||'',institutionId:me?.profile.institution_id||'',name:me?.profile.campus||''}} />}
+        {view === 'categories' && <BrowseGigs key={browseVersion} initialCategory={route.category} onOpen={openGig} onPeople={()=>goTo('people')} user={me?.profile.onboarding_completed?user:null} notice={setNotice} profileScope={{state:me?.profile.state_name||'',institutionId:me?.profile.institution_id||'',name:me?.profile.campus||''}} />}
 
         {view === 'people' && <PeopleDirectory onOpen={openPerson} onBack={()=>goTo('categories')} user={user} onLogin={()=>setAuthOpen(true)} notice={setNotice} profileScope={{state:me?.profile.state_name||'',institutionId:me?.profile.institution_id||'',name:me?.profile.campus||''}} />}
 

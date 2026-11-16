@@ -2,6 +2,7 @@ import type { User } from 'firebase/auth';
 
 export type Profile = {
   firebase_uid: string;
+  cg_username: string;
   email: string;
   display_name: string;
   avatar_url: string;
@@ -38,7 +39,7 @@ export type Gig = { id: string; title: string; description: string; category: st
 export type ProviderGigs = { gigs: Gig[] };
 
 export type PublicGig = Pick<Gig, 'id' | 'title' | 'description' | 'category' | 'price_kobo' | 'delivery_days' | 'location_name' | 'location_type' | 'payment_option' | 'cover_image_id' | 'created_at'> & {
-  provider_name: string; provider_campus?: string; verified_at: string; provider_public_id?: string; provider_online?: 0 | 1;
+  provider_name: string; provider_username?:string; provider_campus?: string; verified_at: string; provider_public_id?: string; provider_online?: 0 | 1;
   state_name: string; institution_id: string | null;
 };
 export type PublicGigPage = { gigs: PublicGig[]; nextOffset: number | null; paymentsEnabled: false };
@@ -46,7 +47,7 @@ export type PublicGigDetail = { gig: PublicGig & {
   provider_avatar: string; provider_bio: string; provider_city: string; provider_campus: string;
 }; images: string[]; related: PublicGig[]; paymentsEnabled: false };
 export type Institution = {id:string;name:string;state_name:string;institution_type:'university'|'polytechnic'|'college';aliases:string};
-export type PublicProvider = {public_id:string;display_name:string;avatar_url:string;bio:string;campus:string;city:string;
+export type PublicProvider = {public_id:string;display_name:string;cg_username:string;avatar_url:string;bio:string;campus:string;city:string;
   state_name:string;institution_id:string|null;verified_at:string;online:0|1;follower_count:number;gig_count?:number};
 export type PublicProviderPage = {providers:PublicProvider[]};
 export type PublicProviderDetail = {provider:PublicProvider;gigs:PublicGig[]};

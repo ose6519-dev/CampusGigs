@@ -18,7 +18,7 @@ test('Phase C validates category, sorting and safe pagination', () => {
 
 test('Phase C search only returns active gigs from approved, active providers', () => {
   const db = new DatabaseSync(':memory:');
-  for (const name of ['0001_profiles.sql', '0002_providers_gigs.sql']) {
+  for (const name of ['0001_profiles.sql', '0002_providers_gigs.sql', '0010_phase_j_search.sql']) {
     db.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), 'utf8'));
   }
   db.prepare('INSERT INTO profiles(firebase_uid,display_name,campus,city) VALUES (?,?,?,?)').run('admin', 'Admin', 'NDU', 'Yenagoa');

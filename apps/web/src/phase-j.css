@@ -1,0 +1,10 @@
+.recent-searches{margin:12px 0 17px;padding:12px 15px;border:1px solid var(--line,rgba(23,29,44,.12));border-radius:18px;background:var(--card,#fff);box-shadow:0 9px 26px rgba(20,30,60,.035)}
+.recent-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;font-size:12px}
+.recent-heading strong{letter-spacing:.01em}.recent-heading button{border:0;background:none;font-size:11px;color:var(--muted,#777);cursor:pointer}
+.recent-items{display:flex;flex-wrap:wrap;gap:7px}.recent-item{display:flex;min-width:0;align-items:center;gap:2px;border:1px solid rgba(40,55,88,.11);border-radius:13px;background:rgba(125,142,170,.065)}
+.recent-open{border:0;background:transparent;display:flex;align-items:center;gap:7px;text-align:left;padding:7px 4px 7px 10px;cursor:pointer;font-size:12px;color:inherit;min-width:0}.recent-open>span:last-child{display:flex;flex-direction:column;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.recent-open small{color:var(--muted,#777);font-size:10px}.recent-remove{border:0;background:none;color:var(--muted,#777);padding:7px 10px 7px 5px;font-size:20px;cursor:pointer}
+.folk-username{font-size:11px;color:var(--muted,#777);font-weight:500}.cg-handle-input{display:flex;gap:9px;align-items:center;margin:10px 0}.cg-handle-input span{font-weight:800}.cg-handle-input input{min-width:0;flex:1}.cg-username-settings small{display:block;color:var(--muted,#777)}
+.cg-handle-input input{height:45px;border:1px solid #e6decc;border-radius:12px;padding:0 13px;background:white}.cg-username-settings{width:100%}.cg-username-settings p{margin-top:9px}.cg-username-settings .button{margin:2px 0 10px}
+.people-page .people-search-panel{grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) auto auto}.people-page .people-search-panel .button{padding:15px 18px}
+@media(max-width:1000px){.people-page .people-search-panel{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){.recent-searches{margin:10px 0 13px;padding:11px;border-radius:15px}.recent-items{gap:6px}.recent-open>span:last-child{max-width:155px}}

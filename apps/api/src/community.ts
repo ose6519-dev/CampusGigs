@@ -19,6 +19,14 @@ function pattern(query:string){
   return query ? `%${query.trim().split(/\s+/).map(word=>likeTerm(word).slice(1,-1)).join('%')}%` : '%';
 }
 
+function relevance(person:{display_name?:unknown;cg_username?:unknown;kind?:unknown;online?:unknown;gig_count?:unknown;follower_count?:unknown},q:string):number {
+  const term=q.trim().replace(/^@/,'').toLowerCase();
+  const handle=String(person.cg_username||'').toLowerCase();
+  const name=String(person.display_name||'').toLowerCase();
+  const match=term?(handle===term?100:handle.startsWith(term)?85:name===term?80:name.startsWith(term)?70:handle.includes(term)?60:name.includes(term)?50:10):0;
+  return match+Number(Boolean(person.online))*4+Number(person.kind==='provider')*2+Math.min(Number(person.gig_count||0),3)+Math.min(Number(person.follower_count||0),10)*0.1;
+}
+
 export async function community(context:Context):Promise<Response|null>{
   const {request,url,env,json,user}=context;
   const path=url.pathname;
@@ -29,9 +37,11 @@ export async function community(context:Context):Promise<Response|null>{
       const school=await findInstitution(env,filters.institutionId);
       if(filters.state && school.state_name!==filters.state) throw new InputError('Institution is outside the selected state');
     }
-    const q=pattern(filters.q);
+    const term=filters.q.replace(/^@/,'');
+    const q=pattern(term);
+    const prefix=likeTerm(term).slice(1);
     const [providers,members]=await Promise.all([
-      env.DB.prepare(`SELECT pp.public_id,'provider' AS kind,p.display_name,p.avatar_url,p.bio,p.campus,p.city,p.state_name,p.institution_id,
+      env.DB.prepare(`SELECT pp.public_id,'provider' AS kind,p.display_name,p.cg_username,p.avatar_url,p.bio,p.campus,p.city,p.state_name,p.institution_id,
         pp.verified_at,${onlineExpression} AS online,
         (SELECT COUNT(*) FROM provider_follows f WHERE f.provider_uid=p.firebase_uid) AS follower_count,
         (SELECT COUNT(*) FROM gigs g WHERE g.provider_uid=p.firebase_uid AND g.status='active') AS gig_count
@@ -39,11 +49,14 @@ export async function community(context:Context):Promise<Response|null>{
         WHERE pp.provider_status='active' AND pp.public_id IS NOT NULL AND p.account_status='active'
           AND p.directory_preference!='private'
           AND (?='' OR p.state_name=?) AND (?='' OR p.institution_id=?)
-          AND (?='' OR p.display_name LIKE ? ESCAPE '\\' OR p.campus LIKE ? ESCAPE '\\' OR p.city LIKE ? ESCAPE '\\'
-            OR EXISTS(SELECT 1 FROM provider_applications a WHERE a.firebase_uid=p.firebase_uid AND a.skill_categories LIKE ? ESCAPE '\\'))
-        ORDER BY online DESC,pp.verified_at DESC LIMIT ?`)
-        .bind(filters.state,filters.state,filters.institutionId,filters.institutionId,filters.q,q,q,q,q,filters.limit).all(),
-      env.DB.prepare(`SELECT p.member_public_id AS public_id,'member' AS kind,p.display_name,p.avatar_url,p.bio,p.campus,p.city,p.state_name,p.institution_id,
+          AND (?='' OR p.display_name LIKE ? ESCAPE '\\' OR p.cg_username LIKE ? ESCAPE '\\' OR p.campus LIKE ? ESCAPE '\\' OR p.city LIKE ? ESCAPE '\\'
+            OR EXISTS(SELECT 1 FROM provider_applications a WHERE a.firebase_uid=p.firebase_uid AND a.skill_categories LIKE ? ESCAPE '\\')
+            OR EXISTS(SELECT 1 FROM gigs g WHERE g.provider_uid=p.firebase_uid AND g.status='active' AND (g.title LIKE ? ESCAPE '\\' OR g.category LIKE ? ESCAPE '\\')))
+        ORDER BY CASE WHEN lower(p.cg_username)=lower(?) THEN 0 WHEN p.cg_username LIKE ? ESCAPE '\\' THEN 1
+          WHEN lower(p.display_name)=lower(?) THEN 2 WHEN p.display_name LIKE ? ESCAPE '\\' THEN 3 ELSE 4 END,
+          online DESC,pp.verified_at DESC LIMIT ?`)
+        .bind(filters.state,filters.state,filters.institutionId,filters.institutionId,filters.q,q,q,q,q,q,q,q,term,prefix,term,prefix,filters.limit).all(),
+      env.DB.prepare(`SELECT p.member_public_id AS public_id,'member' AS kind,p.display_name,p.cg_username,p.avatar_url,p.bio,p.campus,p.city,p.state_name,p.institution_id,
         '' AS verified_at,${onlineExpression} AS online,
         (SELECT COUNT(*) FROM member_follows f WHERE f.member_uid=p.firebase_uid) AS follower_count,
         0 AS gig_count
@@ -51,13 +64,15 @@ export async function community(context:Context):Promise<Response|null>{
         WHERE p.account_status='active' AND p.onboarding_completed=1 AND p.directory_preference='public' AND p.member_public_id IS NOT NULL
           AND NOT EXISTS(SELECT 1 FROM provider_profiles pp WHERE pp.firebase_uid=p.firebase_uid AND pp.provider_status='active')
           AND (?='' OR p.state_name=?) AND (?='' OR p.institution_id=?)
-          AND (?='' OR p.display_name LIKE ? ESCAPE '\\' OR p.campus LIKE ? ESCAPE '\\' OR p.city LIKE ? ESCAPE '\\')
-        ORDER BY online DESC,p.created_at DESC LIMIT ?`)
-        .bind(filters.state,filters.state,filters.institutionId,filters.institutionId,filters.q,q,q,q,filters.limit).all(),
+          AND (?='' OR p.display_name LIKE ? ESCAPE '\\' OR p.cg_username LIKE ? ESCAPE '\\' OR p.campus LIKE ? ESCAPE '\\' OR p.city LIKE ? ESCAPE '\\')
+        ORDER BY CASE WHEN lower(p.cg_username)=lower(?) THEN 0 WHEN p.cg_username LIKE ? ESCAPE '\\' THEN 1
+          WHEN lower(p.display_name)=lower(?) THEN 2 WHEN p.display_name LIKE ? ESCAPE '\\' THEN 3 ELSE 4 END,
+          online DESC,p.created_at DESC LIMIT ?`)
+        .bind(filters.state,filters.state,filters.institutionId,filters.institutionId,filters.q,q,q,q,q,term,prefix,term,prefix,filters.limit).all(),
     ]);
     type Row={kind:string;online:number;follower_count:number;[key:string]:unknown};
     const people=[...(providers.results||[]),...(members.results||[])] as Row[];
-    people.sort((a,b)=>Number(b.online)-Number(a.online)||Number(b.kind==='provider')-Number(a.kind==='provider')||b.follower_count-a.follower_count);
+    people.sort((a,b)=>relevance(b,term)-relevance(a,term)||String(a.public_id).localeCompare(String(b.public_id)));
     return json({people:people.slice(0,filters.limit)});
   }
 
@@ -75,7 +90,7 @@ export async function community(context:Context):Promise<Response|null>{
       const result=await response.json() as {provider:Record<string,unknown>;gigs:unknown[]};
       return json({person:{...result.provider,kind:'provider'},gigs:result.gigs});
     }
-    const person=await env.DB.prepare(`SELECT p.member_public_id AS public_id,'member' AS kind,p.display_name,p.avatar_url,p.bio,
+    const person=await env.DB.prepare(`SELECT p.member_public_id AS public_id,'member' AS kind,p.display_name,p.cg_username,p.avatar_url,p.bio,
       p.campus,p.city,p.state_name,p.institution_id,'' AS verified_at,${onlineExpression} AS online,
       (SELECT COUNT(*) FROM member_follows f WHERE f.member_uid=p.firebase_uid) AS follower_count
       FROM profiles p WHERE p.member_public_id=? AND p.directory_preference='public'
@@ -105,12 +120,12 @@ export async function community(context:Context):Promise<Response|null>{
   if(path==='/v1/me/community-follows'&&request.method==='GET'){
     const owner=verified(user);
     const [providerRows,memberRows]=await Promise.all([
-      env.DB.prepare(`SELECT pp.public_id,'provider' AS kind,p.display_name,p.avatar_url,p.campus,p.state_name,
+      env.DB.prepare(`SELECT pp.public_id,'provider' AS kind,p.display_name,p.cg_username,p.avatar_url,p.campus,p.state_name,
         ${onlineExpression} AS online,f.created_at FROM provider_follows f
         JOIN provider_profiles pp ON pp.firebase_uid=f.provider_uid JOIN profiles p ON p.firebase_uid=f.provider_uid
         WHERE f.follower_uid=? AND pp.provider_status='active' AND p.account_status='active'`)
         .bind(owner.uid).all(),
-      env.DB.prepare(`SELECT p.member_public_id AS public_id,'member' AS kind,p.display_name,p.avatar_url,p.campus,p.state_name,
+      env.DB.prepare(`SELECT p.member_public_id AS public_id,'member' AS kind,p.display_name,p.cg_username,p.avatar_url,p.campus,p.state_name,
         ${onlineExpression} AS online,f.created_at FROM member_follows f JOIN profiles p ON p.firebase_uid=f.member_uid
         WHERE f.follower_uid=? AND p.member_public_id IS NOT NULL AND p.directory_preference='public' AND p.account_status='active'`)
         .bind(owner.uid).all(),
