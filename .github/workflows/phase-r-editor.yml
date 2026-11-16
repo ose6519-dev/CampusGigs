@@ -15,6 +15,12 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Build Worker for generated binding types
+        run: npm run build -w @campusgigs/api
+      - name: Typecheck chat API
+        run: npm run check -w @campusgigs/api
+      - name: Test chat API migrations and reactions
+        run: npm test -w @campusgigs/api
       - name: Typecheck frontend
         run: npm run check -w @campusgigs/web
       - name: Build frontend
