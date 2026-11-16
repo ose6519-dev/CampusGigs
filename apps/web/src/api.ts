@@ -99,3 +99,25 @@ export async function apiRequest<T>(user: User, path: string, init?: RequestInit
   if (!response.ok) throw new Error(payload.error || 'Something went wrong. Please try again.');
   return payload;
 }
+
+export async function chatMediaBlob(user:User,bookingId:string,uploadId:string):Promise<Blob>{
+  if(!baseUrl)throw new Error('CampusGigs API is not configured');
+  const token=await user.getIdToken();
+  const response=await fetch(`${baseUrl}/v1/chats/${bookingId}/media/${uploadId}`,{
+    headers:{Authorization:`Bearer ${token}`},cache:'no-store',
+  });
+  if(!response.ok)throw new Error('Attachment unavailable');
+  return response.blob();
+}
+
+export async function uploadChatMedia(user:User,bookingId:string,file:Blob,filename:string){
+  if(!baseUrl)throw new Error('CampusGigs API is not configured');
+  const token=await user.getIdToken();
+  const response=await fetch(`${baseUrl}/v1/chats/${bookingId}/media`,{
+    method:'POST',body:file,headers:{Authorization:`Bearer ${token}`,
+      'Content-Type':file.type,'X-File-Name':encodeURIComponent(filename)},
+  });
+  const result=await response.json() as {upload?:{id:string;kind:'image'|'audio'|'file'|'video'};error?:string};
+  if(!response.ok||!result.upload)throw new Error(result.error||'Could not attach file');
+  return result.upload;
+}

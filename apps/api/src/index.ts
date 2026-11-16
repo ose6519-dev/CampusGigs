@@ -11,6 +11,7 @@ import { validateSchoolAcademics } from './academicCatalog.ts';
 import { community } from './community.ts';
 import { searchAccount } from './searchAccount.ts';
 import { recommendations } from './recommendations.ts';
+import { chats } from './chats.ts';
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
@@ -23,7 +24,7 @@ function addCors(response: Response, request: Request, allowed: string): Respons
   if (origin && allowed.split(',').map((entry) => entry.trim()).includes(origin)) {
     response.headers.set('Access-Control-Allow-Origin', origin);
     response.headers.set('Vary', 'Origin');
-    response.headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    response.headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-File-Name');
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
   }
   return response;
@@ -85,7 +86,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   const requestUrl = new URL(request.url);
   const path = requestUrl.pathname;
   if (path === '/health' && request.method === 'GET') {
-    return json({ service: 'campusgigs-api', status: 'ok', phase: 'N', bookingsEnabled: true, paymentsEnabled: false });
+    return json({ service: 'campusgigs-api', status: 'ok', phase: 'O', bookingsEnabled: true, messagingEnabled: true, paymentsEnabled: false });
   }
   if (!path.startsWith('/v1/')) return json({ error: 'Not found' }, 404);
   if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
@@ -182,6 +183,9 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   const bookingResponse = await bookings({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit });
   if (bookingResponse) return bookingResponse;
+
+  const chatResponse = await chats({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit });
+  if (chatResponse) return chatResponse;
 
   if (path === '/v1/me' && request.method === 'GET') {
     const role = await env.DB.prepare('SELECT role FROM platform_roles WHERE firebase_uid = ?')

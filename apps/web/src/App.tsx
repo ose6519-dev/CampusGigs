@@ -23,6 +23,7 @@ import { ProviderPublicProfile, FollowingPanel } from './ProviderPublicProfile';
 import { LocationSettingsPanel } from './LocationSettingsPanel';
 import { serviceCatalog } from './serviceCatalog';
 import { NotificationCenter } from './NotificationCenter';
+import { MessagesWorkspace } from './MessagesWorkspace';
 
 function authMessage(error:unknown):string {
   const code=(error as {code?:string})?.code;
@@ -42,7 +43,7 @@ function authMessage(error:unknown):string {
   }
 }
 
-type View = 'explore' | 'categories' | 'detail' | 'bookings' | 'provider' | 'profile' | 'people' | 'person';
+type View = 'explore' | 'categories' | 'detail' | 'bookings' | 'messages' | 'provider' | 'profile' | 'people' | 'person';
 
 function routeFromLocation(): { view: View; gigId: string; category: string } {
   const path = window.location.pathname;
@@ -51,6 +52,9 @@ function routeFromLocation(): { view: View; gigId: string; category: string } {
   const personId=path.match(/^\/people\/([0-9a-f]{32})\/?$/i)?.[1];
   if(personId)return {view:'person',gigId:personId,category:''};
   if(path==='/people'||path==='/people/')return {view:'people',gigId:'',category:''};
+  const chatId=path.match(/^\/messages\/([0-9a-f-]{36})\/?$/i)?.[1];
+  if(chatId)return {view:'messages',gigId:chatId,category:''};
+  if(path==='/messages'||path==='/messages/')return {view:'messages',gigId:'',category:''};
   if (path === '/gigs' || path === '/gigs/') return { view: 'categories', gigId: '', category: new URLSearchParams(window.location.search).get('category') || '' };
   if (path === '/bookings' || path === '/bookings/') return { view: 'bookings', gigId: '', category: '' };
   if (path === '/provide') return { view: 'provider', gigId: '', category: '' };
@@ -163,11 +167,11 @@ function App() {
 
   function goTo(next: View) {
     setEditingSetup(false);
-    const path = ({ explore: '/', categories: '/gigs', bookings: '/bookings', provider: '/provide', profile: '/profile', detail: '/', people:'/people', person:'/people' } as Record<View, string>)[next];
+    const path = ({ explore: '/', categories: '/gigs', bookings: '/bookings', messages:'/messages', provider: '/provide', profile: '/profile', detail: '/', people:'/people', person:'/people' } as Record<View, string>)[next];
     window.history.pushState(null, '', path);
     setRoute({ view: next, gigId: '', category: '' });
     if (next === 'categories') setBrowseVersion((n) => n + 1);
-    if ((next === 'profile' || next === 'provider' || next === 'bookings') && !user) setAuthOpen(true);
+    if ((next === 'profile' || next === 'provider' || next === 'bookings' || next === 'messages') && !user) setAuthOpen(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -187,6 +191,12 @@ function App() {
   function openPerson(id:string){
     window.history.pushState(null,'',`/people/${id}`);
     setRoute({view:'person',gigId:id,category:''});
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  function openMessages(bookingId:string){
+    window.history.pushState(null,'',`/messages/${bookingId}`);
+    setRoute({view:'messages',gigId:bookingId,category:''});
     window.scrollTo({top:0,behavior:'smooth'});
   }
 
@@ -297,6 +307,7 @@ function App() {
             <button className={view === 'explore' ? 'selected' : ''} onClick={() => goTo('explore')}>Explore</button>
             <button className={view === 'categories' || view === 'detail' ? 'selected' : ''} onClick={() => goTo('categories')}>Find services</button>
             <button className={view === 'bookings' ? 'selected' : ''} onClick={() => goTo('bookings')}>My bookings</button>
+            <button className={view === 'messages' ? 'selected' : ''} onClick={() => goTo('messages')}>Messages</button>
             <button className={view === 'provider' ? 'selected' : ''} onClick={() => goTo('provider')}>Become a provider</button>
             <a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer">Explore CampSell <span>↗</span></a>
           </nav>
@@ -349,7 +360,9 @@ function App() {
 
         {view === 'detail' && <GigDetail gigId={route.gigId} user={user} onLogin={()=>setAuthOpen(true)} onBooked={()=>goTo('bookings')} onBack={() => goTo('categories')} onOpen={openGig} onProviderOpen={openPerson} onNotice={setNotice} />}
 
-        {view === 'bookings' && <BookingWorkspace user={user} onLogin={()=>setAuthOpen(true)} onBrowse={()=>goTo('categories')} notice={setNotice} />}
+        {view === 'bookings' && <BookingWorkspace user={user} onLogin={()=>setAuthOpen(true)} onBrowse={()=>goTo('categories')} onMessages={openMessages} notice={setNotice} />}
+
+        {view === 'messages' && <MessagesWorkspace user={user} initialBookingId={route.gigId} onLogin={()=>setAuthOpen(true)} onBack={()=>goTo('categories')} onProfile={openPerson} notice={setNotice} />}
 
         {view === 'provider' && <ProviderWorkspace user={user} location={me?.profile.campus || me?.profile.city || ''} stateName={me?.profile.state_name||''} institutionId={me?.profile.institution_id||''} notice={setNotice} onLogin={() => setAuthOpen(true)} onApproved={setProviderVerified}/>}
 
@@ -360,7 +373,7 @@ function App() {
       </main>
 
       <footer className="site-footer"><div className="section-wrap footer-content"><span className="footer-brand">Campus<span>Gigs.</span></span><p>Built for talent. Made for Nigeria.</p><div><a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer">CampSell ↗</a><span>© {new Date().getFullYear()} CampusGigs</span></div></div></footer>
-      <nav className="mobile-nav" aria-label="CampusGigs bottom navigation"><button className={view === 'explore' ? 'active' : ''} aria-current={view === 'explore' ? 'page' : undefined} onClick={() => goTo('explore')}><Icon>⌂</Icon><small>Explore</small></button><button className={view === 'categories' || view === 'detail' ? 'active' : ''} aria-current={view === 'categories' || view === 'detail' ? 'page' : undefined} onClick={() => goTo('categories')}><Icon>⌕</Icon><small>Gigs</small></button><button className={view === 'bookings' ? 'active' : ''} aria-current={view === 'bookings' ? 'page' : undefined} onClick={() => goTo('bookings')}><Icon>◷</Icon><small>Bookings</small></button><button className={view === 'provider' ? 'active' : ''} aria-current={view === 'provider' ? 'page' : undefined} onClick={() => goTo('provider')}><Icon>✦</Icon><small>Provide</small></button><button className={view === 'profile' ? 'active' : ''} aria-current={view === 'profile' ? 'page' : undefined} onClick={() => goTo('profile')}><Icon>◉</Icon><small>Profile</small></button></nav>
+      <nav className="mobile-nav" aria-label="CampusGigs bottom navigation"><button className={view === 'explore' ? 'active' : ''} aria-current={view === 'explore' ? 'page' : undefined} onClick={() => goTo('explore')}><Icon>⌂</Icon><small>Explore</small></button><button className={view === 'categories' || view === 'detail' ? 'active' : ''} aria-current={view === 'categories' || view === 'detail' ? 'page' : undefined} onClick={() => goTo('categories')}><Icon>⌕</Icon><small>Gigs</small></button><button className={view === 'bookings' ? 'active' : ''} aria-current={view === 'bookings' ? 'page' : undefined} onClick={() => goTo('bookings')}><Icon>◷</Icon><small>Bookings</small></button><button className={view === 'messages' ? 'active' : ''} aria-current={view === 'messages' ? 'page' : undefined} onClick={() => goTo('messages')}><Icon>✉</Icon><small>Chats</small></button><button className={view === 'provider' ? 'active' : ''} aria-current={view === 'provider' ? 'page' : undefined} onClick={() => goTo('provider')}><Icon>✦</Icon><small>Provide</small></button><button className={view === 'profile' ? 'active' : ''} aria-current={view === 'profile' ? 'page' : undefined} onClick={() => goTo('profile')}><Icon>◉</Icon><small>Profile</small></button></nav>
 
       {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss">×</button></div>}
       {authOpen && <div className="modal-layer" onMouseDown={(event) => { if (event.target === event.currentTarget) setAuthOpen(false); }}><div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
