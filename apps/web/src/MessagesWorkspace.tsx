@@ -9,7 +9,7 @@ import {ChatMediaGallery} from './ChatMediaGallery';
 
 type ChatRow={booking_id:string;service_title:string;status:string;other_name:string;other_avatar:string;
   other_city:string;other_state:string;other_username:string;other_public_id:string|null;
-  other_kind:string;other_online:number;last_body:string|null;last_kind:string|null;last_at:string|null;unread_count:number;
+  other_kind:string;other_online:number;last_body:string|null;last_kind:string|null;last_upload_id?:string|null;last_mime_type?:string|null;last_at:string|null;unread_count:number;
   last_cipher_version:number;last_client_id:string|null;last_sender_uid:string|null;secure:number};
 type ChatDetail={booking:{bookingId:string;serviceTitle:string;status:string;otherName:string;otherAvatar:string;
   otherCity:string;otherState:string;otherUsername:string;otherPublicId:string|null;otherKind:string;otherOnline:number};
@@ -30,6 +30,41 @@ const time=(date:string|null)=>date?new Date(date).toLocaleTimeString('en-NG',{h
 const short=(value:string,limit=70)=>value.length>limit?value.slice(0,limit)+'…':value;
 function Avatar({name,src,size='normal'}:{name:string;src?:string|null;size?:'normal'|'small'|'large'}){
   return <span className={`cg-chat-avatar ${size}`}>{src?<img src={src} alt="" loading="lazy" referrerPolicy="no-referrer"/>:name.slice(0,1).toUpperCase()}</span>;
+}
+function ChatThreadThumb({user,chat,identity}:{user:User;chat:ChatRow;identity:Awaited<ReturnType<typeof ensureDeviceIdentity>>|null}){
+  const element=useRef<HTMLSpanElement>(null),[visible,setVisible]=useState(false),[src,setSrc]=useState('');
+  useEffect(()=>{
+    const node=element.current;if(!node)return;
+    if(!('IntersectionObserver' in window)){setVisible(true);return;}
+    const obs=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){setVisible(true);obs.disconnect();}},{rootMargin:'110px'});
+    obs.observe(node);return()=>obs.disconnect();
+  },[chat.booking_id,chat.last_upload_id]);
+  useEffect(()=>{
+    if(!visible||!chat.last_upload_id||!['image','video'].includes(chat.last_kind||''))return;
+    if(chat.last_cipher_version===1&&(!identity||!chat.last_body||!chat.last_client_id||!chat.last_sender_uid))return;
+    let alive=true,resource='';
+    void (async()=>{
+      try{
+        let key:CryptoKey|null=null,mime=chat.last_mime_type||'application/octet-stream';
+        if(chat.last_cipher_version===1&&identity){
+          key=(await chatEncryption(user,chat.booking_id,identity)).key;if(!key)return;
+          const info=await decryptPayload(key,chat.booking_id,chat.last_kind!,chat.last_sender_uid!,chat.last_client_id!,chat.last_body!);
+          mime=info.mime||mime;
+        }
+        const blob=await chatMediaBlob(user,chat.booking_id,chat.last_upload_id!);
+        const result=key?await decryptAttachment(key,chat.booking_id,chat.last_kind!,blob,mime):blob;
+        if(!alive)return;
+        resource=URL.createObjectURL(result);setSrc(resource);
+      }catch{/* An inaccessible attachment remains private. */}
+    })();
+    return()=>{alive=false;if(resource)URL.revokeObjectURL(resource);};
+  },[user,chat.booking_id,chat.last_upload_id,chat.last_kind,chat.last_cipher_version,
+    chat.last_body,chat.last_client_id,chat.last_sender_uid,chat.last_mime_type,identity,visible]);
+  return <span className="cg-thread-mini" ref={element} aria-label={chat.last_kind==='video'?'Shared video':'Shared photo'}>
+    {src?(chat.last_kind==='video'?<video src={src} muted playsInline preload="metadata"/>:<img src={src} alt="" loading="lazy"/>):
+      <span aria-hidden="true">{chat.last_kind==='video'?'▶':'▣'}</span>}
+    {chat.last_kind==='video'&&<span className="cg-thread-video-icon">▶</span>}
+  </span>;
 }
 const playerTime=(value:number)=>`${Math.floor(value/60)}:${String(Math.floor(value%60)).padStart(2,'0')}`;
 const waves=[11,17,24,14,28,20,13,32,25,15,27,20,34,18,13,23,31,20,12,27,22,15,30,17];
@@ -559,6 +594,8 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
                 <span className="cg-thread-sub">{item.other_username?'@'+item.other_username+' · ':''}{item.service_title}</span>
                 <span className="cg-thread-preview">{item.last_cipher_version===1?(listPreviews[`${item.booking_id}:${item.last_client_id}`]||'New message'):
                   item.last_body|| (item.last_kind?'📎 '+item.last_kind:'Say hello 👋')}</span></span>
+              {user&&item.last_upload_id&&['image','video'].includes(item.last_kind||'')&&
+                <ChatThreadThumb key={item.last_upload_id} user={user} chat={item} identity={identity}/>}
               {!!item.unread_count&&<span className="cg-chat-unread">{Math.min(99,item.unread_count)}</span>}
             </button>)
             :<div className="cg-msg-empty"><span>✦</span><h2>{query?'No matching chats':'Your conversations start here'}</h2><p>{query?'Try another name or gig':'Request a service to message its provider.'}</p><button onClick={onBack}>Find services ↗</button></div>}
