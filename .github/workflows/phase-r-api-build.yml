@@ -1,0 +1,22 @@
+name: Phase R API compilation audit
+on:
+  push:
+    branches: [phase-r-chat-stability]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Compile Worker without deploying
+        run: npm run build -w @campusgigs/api
+      - name: Inspect generated bundle paths
+        run: find apps/api -maxdepth 5 -type f -not -path '*/node_modules/*' -not -path '*/.git/*' | grep -E '(dist|\.cloudflare|\.wrangler)' | head -40
