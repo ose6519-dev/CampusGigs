@@ -24,7 +24,10 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
   const [editing,setEditing]=useState(false);
   const [crop,setCrop]=useState(false);
   const [marker,setMarker]=useState('');
-  const [strokes,setStrokes]=useState<Stroke[]>([]);
+  const [imageReady,setImageReady]=useState(false);
+  const strokesRef=useRef<Stroke[]>([]);
+  const pictureRef=useRef<HTMLImageElement|null>(null);
+  const cropRef=useRef(false);
   const [saving,setSaving]=useState(false);
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const drawing=useRef(false);
@@ -35,7 +38,7 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
   useEffect(()=>{
     if(!current?.upload_id)return;
     let cancelled=false;let resource='';
-    setLoading(true);setProblem('');setUrl('');setEditing(false);setMarker('');setStrokes([]);setCrop(false);
+    setLoading(true);setProblem('');setUrl('');setEditing(false);setMarker('');strokesRef.current=[];pictureRef.current=null;setImageReady(false);setCrop(false);
     if(current.cipher_version===1&&!secretKey){setProblem('This attachment cannot be opened on this device.');setLoading(false);return;}
     void chatMediaBlob(user,bookingId,current.upload_id).then(async encrypted=>{
       const data=current.cipher_version===1&&secretKey?
@@ -53,50 +56,73 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
     };
     window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);
   },[onClose,editing,items.length]);
+  function redraw(){
+    const canvas=canvasRef.current,photo=pictureRef.current;
+    if(!canvas||!photo?.complete||!photo.naturalWidth)return;
+    const ctx=canvas.getContext('2d');if(!ctx)return;
+    const w=canvas.width,h=canvas.height;
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle='#201e19';ctx.fillRect(0,0,w,h);
+    const factor=cropRef.current?Math.max(w/photo.naturalWidth,h/photo.naturalHeight):
+      Math.min(w/photo.naturalWidth,h/photo.naturalHeight);
+    const width=photo.naturalWidth*factor,height=photo.naturalHeight*factor;
+    ctx.drawImage(photo,(w-width)/2,(h-height)/2,width,height);
+    ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=7;
+    for(const stroke of strokesRef.current){
+      if(!stroke.points.length)continue;
+      ctx.strokeStyle=stroke.color;ctx.fillStyle=stroke.color;ctx.beginPath();
+      const first=stroke.points[0];
+      if(stroke.points.length===1){ctx.arc(first.x*w,first.y*h,3.5,0,Math.PI*2);ctx.fill();continue;}
+      ctx.moveTo(first.x*w,first.y*h);
+      for(const point of stroke.points.slice(1))ctx.lineTo(point.x*w,point.y*h);
+      ctx.stroke();
+    }
+  }
   useEffect(()=>{
     if(!editing||!url||current?.kind!=='image')return;
     let cancelled=false;
+    setImageReady(false);
     const photo=new Image();
     photo.onload=()=>{
       if(cancelled)return;
-      const canvas=canvasRef.current;if(!canvas)return;
-      const ctx=canvas.getContext('2d');if(!ctx)return;
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle='#1d1b18';ctx.fillRect(0,0,canvas.width,canvas.height);
-      const factor=crop?Math.max(canvas.width/photo.width,canvas.height/photo.height):
-        Math.min(canvas.width/photo.width,canvas.height/photo.height);
-      const width=photo.width*factor,height=photo.height*factor;
-      ctx.drawImage(photo,(canvas.width-width)/2,(canvas.height-height)/2,width,height);
-      ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=7;
-      for(const stroke of strokes){
-        if(!stroke.points.length)continue;
-        ctx.strokeStyle=stroke.color;ctx.beginPath();
-        ctx.moveTo(stroke.points[0].x*canvas.width,stroke.points[0].y*canvas.height);
-        stroke.points.slice(1).forEach(point=>ctx.lineTo(point.x*canvas.width,point.y*canvas.height));
-        if(stroke.points.length===1)ctx.lineTo(stroke.points[0].x*canvas.width+.2,stroke.points[0].y*canvas.height+.2);
-        ctx.stroke();
-      }
+      pictureRef.current=photo;setImageReady(true);redraw();
     };
+    photo.onerror=()=>{if(!cancelled){setImageReady(false);setProblem('Could not prepare photo for editing.');}};
     photo.src=url;
     return()=>{cancelled=true;};
-  },[editing,url,current?.kind,crop,strokes]);
+  },[editing,url,current?.kind]);
+  useEffect(()=>{cropRef.current=crop;if(editing)redraw();},[crop,editing]);
   function point(event:PointerEvent<HTMLCanvasElement>):Point{
     const rect=event.currentTarget.getBoundingClientRect();
     return {x:Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),
       y:Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height))};
   }
   function markStart(event:PointerEvent<HTMLCanvasElement>){
-    if(!marker)return;
-    event.currentTarget.setPointerCapture(event.pointerId);drawing.current=true;
-    setStrokes(old=>[...old,{color:marker,points:[point(event)]}]);
+    if(!marker||!imageReady||!pictureRef.current)return;
+    try{event.currentTarget.setPointerCapture(event.pointerId);}catch{/* The brush remains usable if capture is unavailable. */}
+    drawing.current=true;
+    const p=point(event);strokesRef.current.push({color:marker,points:[p]});
+    const ctx=event.currentTarget.getContext('2d');
+    if(ctx){ctx.fillStyle=marker;ctx.beginPath();ctx.arc(p.x*event.currentTarget.width,p.y*event.currentTarget.height,3.5,0,Math.PI*2);ctx.fill();}
   }
   function markMove(event:PointerEvent<HTMLCanvasElement>){
-    if(!drawing.current)return;
-    const location=point(event);
-    setStrokes(old=>{if(!old.length)return old;const result=[...old];
-      result[result.length-1]={...result[result.length-1],points:[...result[result.length-1].points,location]};
-      return result;});
+    if(!drawing.current||!imageReady)return;
+    const stroke=strokesRef.current.at(-1);if(!stroke)return;
+    const previous=stroke.points.at(-1),next=point(event);
+    if(!previous)return;
+    stroke.points.push(next);
+    const ctx=event.currentTarget.getContext('2d');if(!ctx)return;
+    ctx.strokeStyle=stroke.color;ctx.lineWidth=7;ctx.lineCap='round';ctx.lineJoin='round';
+    ctx.beginPath();ctx.moveTo(previous.x*event.currentTarget.width,previous.y*event.currentTarget.height);
+    ctx.lineTo(next.x*event.currentTarget.width,next.y*event.currentTarget.height);ctx.stroke();
   }
+  function markEnd(event:PointerEvent<HTMLCanvasElement>){
+    drawing.current=false;
+    try{if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);}
+    catch{/* Some mobile browsers release capture automatically. */}
+  }
+  function undoMark(){strokesRef.current=strokesRef.current.slice(0,-1);redraw();}
+  function clearMarks(){strokesRef.current=[];redraw();}
   function onTouchStart(event:TouchEvent<HTMLDivElement>){touchX.current=event.touches[0]?.clientX||0;}
   function onTouchEnd(event:TouchEvent<HTMLDivElement>){
     if(editing)return;
@@ -132,7 +158,7 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
         problem?<div className="cg-q-gallery-wait">{problem}</div>:
         editing&&current.kind==='image'?<canvas className={marker?'cg-q-drawing':''} ref={canvasRef}
           width={900} height={700} onPointerDown={markStart} onPointerMove={markMove}
-          onPointerUp={()=>{drawing.current=false;}} onPointerCancel={()=>{drawing.current=false;}}
+          onPointerUp={markEnd} onPointerCancel={markEnd}
           aria-label="Crop and mark photo"/>:
         current.kind==='image'?<img src={url} alt={displayName(current,meta)}/>:
         current.kind==='video'?<video src={url} controls playsInline preload="metadata"/>:
@@ -142,23 +168,31 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
       {index<items.length-1&&!editing&&<button type="button" className="cg-q-gallery-arrow right" onClick={()=>next(1)} aria-label="Next attachment">›</button>}
     </div>
     {editing&&current.kind==='image'&&<div className="cg-q-gallery-edit">
-      <button className={crop?'active':''} onClick={()=>setCrop(true)}>Crop</button>
-      <button className={!crop?'active':''} onClick={()=>setCrop(false)}>Fit</button>
-      {markerColors.map(color=><button key={color.value} className={marker===color.value?'active':''}
-        title={color.name+' marker'} aria-label={color.name+' marker'}
-        style={{background:color.value}} onClick={()=>setMarker(marker===color.value?'':color.value)}/>)}
-      <button onClick={()=>setStrokes(old=>old.slice(0,-1))} aria-label="Undo mark">↶</button>
-      <button onClick={()=>setEditing(false)}>Done</button>
+      <div className="cg-r-tools-row"><span className="cg-r-tools-label">Frame</span>
+        <button type="button" className={crop?'active':''} onClick={()=>setCrop(true)}>▣ Crop</button>
+        <button type="button" className={!crop?'active':''} onClick={()=>setCrop(false)}>▤ Fit</button>
+      </div>
+      <div className="cg-r-tools-row"><span className="cg-r-tools-label">Marker</span>
+        {markerColors.map(color=><button key={color.value} type="button" className={marker===color.value?'active cg-r-color':'cg-r-color'}
+          title={color.name+' marker'} aria-label={color.name+' marker'}
+          style={{background:color.value}} onClick={()=>setMarker(marker===color.value?'':color.value)}/>)}
+        <small>{marker?'Draw on photo':'Choose a color'}</small>
+      </div>
+      <div className="cg-r-tools-row cg-r-tools-actions">
+        <button type="button" onClick={undoMark}>↶ Undo</button>
+        <button type="button" onClick={clearMarks}>✕ Clear</button>
+        <button type="button" className="cg-r-edit-done" onClick={()=>{setMarker('');setEditing(false);}}>✓ Done</button>
+      </div>
     </div>}
     <div className="cg-q-gallery-filmstrip" aria-label="Attachments in conversation">{items.map((item,i)=>
       <button type="button" key={item.id} aria-label={'Attachment '+(i+1)} aria-current={index===i?'true':undefined}
         className={index===i?'selected':''} onClick={()=>setIndex(i)}>{item.kind==='image'?'▧':item.kind==='video'?'▶':'▤'}</button>)}</div>
     <footer className="cg-q-gallery-actions">
-      <button disabled={!url||saving} onClick={()=>void download()}>↓ <span>{saving?'Saving…':'Download'}</span></button>
-      {current.kind==='image'&&<button disabled={!url} onClick={()=>setEditing(value=>!value)}>✎ <span>{editing?'View':'Crop / Mark'}</span></button>}
+      <button disabled={!url||saving||(editing&&!imageReady)} onClick={()=>void download()}>↓ <span>{saving?'Saving…':'Download'}</span></button>
+      {current.kind==='image'&&<button disabled={!url} onClick={()=>setEditing(value=>!value)}>✎ <span>{editing?'View':'Edit photo'}</span></button>}
       <button onClick={()=>{onReply(current.id);onClose();}}>↪ <span>Reply</span></button>
       <button onClick={()=>{onActions(current.id);onClose();}}>♡ <span>React</span></button>
     </footer>
-    {editing&&<p className="cg-q-gallery-hint">Edits are saved as a new download. The original shared file stays unchanged.</p>}
+    {editing&&<p className="cg-q-gallery-hint">Mark directly on the photo. Download saves a copy; the original stays unchanged.</p>}
   </div>;
 }
