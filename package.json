@@ -3,11 +3,12 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "workspaces": ["apps/api", "apps/web"],
+  "workspaces": ["apps/api", "apps/web", "apps/admin"],
   "scripts": {
-    "build": "npm run build -w @campusgigs/web && npm run build -w @campusgigs/api",
-    "check": "npm run check -w @campusgigs/web && npm run check -w @campusgigs/api",
+    "build": "npm run build -w @campusgigs/web && npm run build -w @campusgigs/admin && npm run build -w @campusgigs/api",
+    "check": "npm run check -w @campusgigs/web && npm run check -w @campusgigs/admin && npm run check -w @campusgigs/api",
     "dev:web": "npm run dev -w @campusgigs/web",
+    "dev:admin": "npm run dev -w @campusgigs/admin",
     "dev:api": "npm run dev -w @campusgigs/api"
   }
 }

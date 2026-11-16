@@ -4,6 +4,21 @@ import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { parseProfileUpdate, parseMode } from '../src/validation.ts';
 import { verifyFirebaseToken, AuthError } from '../src/auth.ts';
+import { assertAdminAccess, escapeLike, parseMemberSearch, AdminAccessError } from '../src/admin.ts';
+
+test('admin privilege is granted only by D1 role to verified active identities', () => {
+  assert.doesNotThrow(() => assertAdminAccess('admin', true, 'active'));
+  for (const args of [['member', true, 'active'], ['admin', false, 'active'], ['admin', true, 'suspended'], [null, true, 'active']]) {
+    assert.throws(() => assertAdminAccess(...args), AdminAccessError);
+  }
+});
+
+test('member search validates paging and escapes SQLite LIKE wildcards', () => {
+  assert.deepEqual(parseMemberSearch(new URL('https://example.com/v1/admin/members?search=Pere&offset=25')), {search:'Pere',offset:25,limit:25});
+  assert.equal(escapeLike('A%_\\B'), 'A\\%\\_\\\\B');
+  assert.throws(() => parseMemberSearch(new URL('https://example.com/?offset=-3')));
+  assert.throws(() => parseMemberSearch(new URL('https://example.com/?search='+'x'.repeat(81))));
+});
 
 test('profile validation strips whitespace and enforces exact permitted fields', () => {
   assert.deepEqual(parseProfileUpdate({ displayName: '  Pere  ', city: ' Yenagoa ' }), {

@@ -9,10 +9,11 @@ Phase A includes:
 - Cloudflare Worker API that verifies Firebase ID-token signatures against Google's current public certificates and checks issuer/audience/expiry.
 - Private Cloudflare D1 profiles, roles, and basic rate-limit storage.
 - Profile creation and editing, campus/city/bio, Buying/Providing preference.
+- **Separate CampusGigs Admin dashboard** in `apps/admin`, hosted independently from the buyer site. Server-side UID-role checks, member statistics, and read-only directory.
 - Link to CampSell; no access to CampSell's database or deployment.
 - Tests for input validation, auth rejection and SQL schema.
 
-**Not yet implemented:** provider applications/verification, live listings, search, bookings, Paystack, escrow, payouts, reviews, disputes, cron and notifications. These belong to Phases B–F. No live payment can be charged by this Phase A code.
+**Not yet implemented:** provider applications/verification, live gig listings, customer-facing search, bookings, Paystack, escrow, payouts, reviews, disputes, cron and notifications. These belong to Phases B–F. No live payment can be charged by this Phase A code.
 
 ## Structure
 
@@ -31,6 +32,10 @@ CampusGigs/
 │       ├── src/App.tsx               # Pages and profile UI
 │       ├── src/firebase.ts           # Client-side Firebase login
 │       ├── src/api.ts                # Bearer token API calls
+│       └── src/styles.css
+│   └── admin/                       # Separate admin-only Cloudflare Pages frontend
+│       ├── src/App.tsx              # Guarded dashboard, members, phase placeholders
+│       ├── src/api.ts               # Firebase bearer-token API calls
 │       └── src/styles.css
 └── docs/DEPLOY.md                    # Setup, verification, pending choices
 ```
@@ -55,6 +60,7 @@ npm run dev:api
 ```
 
 Follow [docs/DEPLOY.md](docs/DEPLOY.md) for Cloudflare resource creation, migrations, Google authorised domain, and production variables.
+See [docs/ADMIN.md](docs/ADMIN.md) for the separate admin dashboard hosting and security model.
 
 ## Phase A API
 

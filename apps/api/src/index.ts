@@ -1,4 +1,5 @@
 import { AuthError, verifyFirebaseToken } from './auth';
+import { AdminAccessError, assertAdminAccess, escapeLike, parseMemberSearch } from './admin';
 import { InputError, parseMode, parseProfileUpdate } from './validation';
 import type { ProfileRecord } from './types';
 
@@ -72,7 +73,8 @@ async function ensureProfile(env: Env, uid: string, email: string, displayName: 
 }
 
 async function route(request: Request, env: Env): Promise<Response> {
-  const path = new URL(request.url).pathname;
+  const requestUrl = new URL(request.url);
+  const path = requestUrl.pathname;
   if (path === '/health' && request.method === 'GET') {
     return json({ service: 'campusgigs-api', status: 'ok', phase: 'A' });
   }
@@ -80,6 +82,53 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (!['GET', 'PATCH'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
 
   const user = await verifyFirebaseToken(request, env.FIREBASE_PROJECT_ID);
+
+  if (path.startsWith('/v1/admin/')) {
+    // The verified Firebase UID, not a browser flag or email parameter, determines admin access.
+    const grant = await env.DB.prepare(`
+      SELECT r.role, p.account_status FROM platform_roles AS r
+      JOIN profiles AS p ON p.firebase_uid = r.firebase_uid
+      WHERE r.firebase_uid = ?
+    `).bind(user.uid).first<{ role: string; account_status: string }>();
+    assertAdminAccess(grant?.role, user.emailVerified, grant?.account_status);
+    if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+
+    if (path === '/v1/admin/overview') {
+      const totals = await env.DB.prepare(`
+        SELECT COUNT(*) AS members,
+          COALESCE(SUM(CASE WHEN active_mode = 'providing' THEN 1 ELSE 0 END), 0) AS providing,
+          COALESCE(SUM(CASE WHEN active_mode = 'buying' THEN 1 ELSE 0 END), 0) AS buying,
+          COALESCE(SUM(CASE WHEN account_status = 'suspended' THEN 1 ELSE 0 END), 0) AS suspended,
+          COALESCE(SUM(CASE WHEN created_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days') THEN 1 ELSE 0 END), 0) AS new_week
+        FROM profiles
+      `).first();
+      const recent = await env.DB.prepare(`
+        SELECT firebase_uid, display_name, email, campus, city, active_mode, account_status, created_at
+        FROM profiles ORDER BY created_at DESC, firebase_uid DESC LIMIT 6
+      `).all();
+      return json({ totals, recent: recent.results || [], phase: 'A', dataSource: 'CampusGigs D1' });
+    }
+
+    if (path === '/v1/admin/members') {
+      let search: string, offset: number, limit: number;
+      try { ({ search, offset, limit } = parseMemberSearch(requestUrl)); }
+      catch { throw new InputError('Invalid member search or page offset'); }
+      const pattern = `%${escapeLike(search)}%`;
+      const members = await env.DB.prepare(`
+        SELECT firebase_uid, display_name, email, campus, city, active_mode, account_status, created_at
+        FROM profiles
+        WHERE display_name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\'
+           OR campus LIKE ? ESCAPE '\\' OR city LIKE ? ESCAPE '\\'
+           OR firebase_uid LIKE ? ESCAPE '\\'
+        ORDER BY created_at DESC, firebase_uid DESC LIMIT ? OFFSET ?
+      `).bind(pattern, pattern, pattern, pattern, pattern, limit + 1, offset).all();
+      const rows = members.results || [];
+      return json({ members: rows.slice(0, limit), nextOffset: rows.length > limit ? offset + limit : null });
+    }
+
+    return json({ error: 'Not found' }, 404);
+  }
+
   const profile = await ensureProfile(env, user.uid, user.emailVerified ? user.email : '', user.displayName, user.picture);
   if (profile.account_status !== 'active') return json({ error: 'Account suspended' }, 403);
 
@@ -129,7 +178,7 @@ export default {
     try {
       return addCors(await route(request, env), request, env.WEB_ORIGINS);
     } catch (error) {
-      const status = error instanceof AuthError ? 401 : error instanceof RateLimitError ? 429 : error instanceof InputError ? 400 : 500;
+      const status = error instanceof AuthError ? 401 : error instanceof AdminAccessError ? 403 : error instanceof RateLimitError ? 429 : error instanceof InputError ? 400 : 500;
       if (status === 500) console.error(JSON.stringify({ event: 'request_failed', path: new URL(request.url).pathname }));
       const reason = status === 500 ? 'Service temporarily unavailable' : (error as Error).message;
       return addCors(json({ error: reason }, status), request, env.WEB_ORIGINS);

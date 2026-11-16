@@ -14,7 +14,7 @@ export default defineConfig({
       DB: bindings.d1({ name: 'campusgigs-db' }),
       MEDIA: bindings.r2({ name: 'campusgigs-media' }),
       FIREBASE_PROJECT_ID: bindings.text('campsell-ea245'),
-      WEB_ORIGINS: bindings.text('https://campusgigs-97y.pages.dev,http://localhost:5173'),
+      WEB_ORIGINS: bindings.text('https://campusgigs-97y.pages.dev,https://campusgigspere.pages.dev,http://localhost:5173,http://localhost:5174'),
     },
   },
 });
