@@ -3,7 +3,7 @@ on:
   push:
     branches: [phase-s-community-feed]
 permissions:
-  contents: read
+  contents: write
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -29,3 +29,14 @@ jobs:
         run: npm run check -w @campusgigs/admin
       - name: Build admin
         run: npm run build -w @campusgigs/admin
+      - name: Preserve release Worker bundle for audited deployment
+        run: |
+          mkdir -p release
+          cp apps/api/.cloudflare/output/v0/workers/default/bundle/index.js release/phase-s-worker.js
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f release/phase-s-worker.js
+          if ! git diff --cached --quiet; then
+            git commit -m 'build(phase-s): verified Worker bundle [skip ci]'
+            git push origin HEAD:phase-s-community-feed
+          fi
