@@ -8,7 +8,8 @@ export type GalleryItem={
   cipher_version:number;filename:string|null;mime_type:string|null;size_bytes:number|null;media_group_id:string|null;
 };
 type Point={x:number;y:number};
-type Stroke={color:string;points:Point[]};
+type CropRect={x:number;y:number;w:number;h:number};
+type Stroke={color:string;points:Point[];width:number};
 const markerColors=[{name:'Black',value:'#20201b'},{name:'Gold',value:'#e6b82e'},
   {name:'Grey',value:'#939393'},{name:'Red',value:'#d74340'}];
 const displayName=(item:GalleryItem,meta?:SecurePayload)=>meta?.filename||item.filename||'Shared attachment';
@@ -23,11 +24,17 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
   const [problem,setProblem]=useState('');
   const [editing,setEditing]=useState(false);
   const [crop,setCrop]=useState(false);
+  const [cropRect,setCropRect]=useState<CropRect|null>(null);
+  const [rotation,setRotation]=useState(0);
+  const rotationRef=useRef(0);
+  const [brush,setBrush]=useState(7);
+  const brushRef=useRef(7);
   const [marker,setMarker]=useState('');
+  const cropMove=useRef<{corner:string;start:Point;initial:CropRect}|null>(null);
+  const workspaceRef=useRef<HTMLDivElement>(null);
   const [imageReady,setImageReady]=useState(false);
   const strokesRef=useRef<Stroke[]>([]);
   const pictureRef=useRef<HTMLImageElement|null>(null);
-  const cropRef=useRef(false);
   const [saving,setSaving]=useState(false);
   const [downloadError,setDownloadError]=useState('');
   const canvasRef=useRef<HTMLCanvasElement>(null);
@@ -39,7 +46,7 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
   useEffect(()=>{
     if(!current?.upload_id)return;
     let cancelled=false;let resource='';
-    setLoading(true);setProblem('');setUrl('');setEditing(false);setMarker('');strokesRef.current=[];pictureRef.current=null;setImageReady(false);setCrop(false);
+    setLoading(true);setProblem('');setUrl('');setEditing(false);setMarker('');strokesRef.current=[];pictureRef.current=null;setImageReady(false);setCrop(false);setCropRect(null);setRotation(0);rotationRef.current=0;
     if(current.cipher_version===1&&!secretKey){setProblem('This attachment cannot be opened on this device.');setLoading(false);return;}
     void chatMediaBlob(user,bookingId,current.upload_id).then(async encrypted=>{
       const data=current.cipher_version===1&&secretKey?
@@ -60,24 +67,70 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
   function redraw(){
     const canvas=canvasRef.current,photo=pictureRef.current;
     if(!canvas||!photo?.complete||!photo.naturalWidth)return;
+    const scale=Math.min(1,1200/Math.max(photo.naturalWidth,photo.naturalHeight));
+    const baseWidth=Math.max(1,Math.round(photo.naturalWidth*scale));
+    const baseHeight=Math.max(1,Math.round(photo.naturalHeight*scale));
+    const turned=rotationRef.current%180!==0;
+    const w=turned?baseHeight:baseWidth,h=turned?baseWidth:baseHeight;
+    if(canvas.width!==w)canvas.width=w;
+    if(canvas.height!==h)canvas.height=h;
     const ctx=canvas.getContext('2d');if(!ctx)return;
-    const w=canvas.width,h=canvas.height;
     ctx.clearRect(0,0,w,h);
-    ctx.fillStyle='#201e19';ctx.fillRect(0,0,w,h);
-    const factor=cropRef.current?Math.max(w/photo.naturalWidth,h/photo.naturalHeight):
-      Math.min(w/photo.naturalWidth,h/photo.naturalHeight);
-    const width=photo.naturalWidth*factor,height=photo.naturalHeight*factor;
-    ctx.drawImage(photo,(w-width)/2,(h-height)/2,width,height);
-    ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=7;
+    ctx.save();ctx.translate(w/2,h/2);
+    ctx.rotate(rotationRef.current*Math.PI/180);
+    ctx.drawImage(photo,-baseWidth/2,-baseHeight/2,baseWidth,baseHeight);
+    ctx.restore();
+    ctx.lineCap='round';ctx.lineJoin='round';
     for(const stroke of strokesRef.current){
       if(!stroke.points.length)continue;
-      ctx.strokeStyle=stroke.color;ctx.fillStyle=stroke.color;ctx.beginPath();
-      const first=stroke.points[0];
-      if(stroke.points.length===1){ctx.arc(first.x*w,first.y*h,3.5,0,Math.PI*2);ctx.fill();continue;}
+      ctx.strokeStyle=stroke.color;ctx.fillStyle=stroke.color;ctx.lineWidth=stroke.width;
+      ctx.beginPath();const first=stroke.points[0];
+      if(stroke.points.length===1){ctx.arc(first.x*w,first.y*h,stroke.width/2,0,Math.PI*2);ctx.fill();continue;}
       ctx.moveTo(first.x*w,first.y*h);
       for(const point of stroke.points.slice(1))ctx.lineTo(point.x*w,point.y*h);
       ctx.stroke();
     }
+  }
+  function rotatePhoto(){
+    rotationRef.current=(rotationRef.current+90)%360;
+    setRotation(rotationRef.current);
+    redraw();
+  }
+  function frameCrop(){
+    setMarker('');setCrop(true);
+    setCropRect(previous=>previous||{x:.08,y:.08,w:.84,h:.84});
+  }
+  function resetFrame(){setCrop(false);setCropRect(null);setMarker('');}
+  function cropPoint(event:PointerEvent<HTMLElement>):Point{
+    const rect=workspaceRef.current?.getBoundingClientRect();
+    if(!rect||!rect.width||!rect.height)return{x:0,y:0};
+    return{x:(event.clientX-rect.left)/rect.width,y:(event.clientY-rect.top)/rect.height};
+  }
+  function cropDragStart(event:PointerEvent<HTMLElement>,corner:string){
+    if(!cropRect)return;
+    event.stopPropagation();
+    cropMove.current={corner,start:cropPoint(event),initial:{...cropRect}};
+    try{event.currentTarget.setPointerCapture(event.pointerId);}catch{/* Pointer capture may not be supported. */}
+  }
+  function cropDragMove(event:PointerEvent<HTMLElement>){
+    const drag=cropMove.current;if(!drag)return;
+    const p=cropPoint(event),dx=p.x-drag.start.x,dy=p.y-drag.start.y;
+    const old=drag.initial;
+    let x=old.x,y=old.y,w=old.w,h=old.h;
+    if(drag.corner==='move'){
+      x=Math.max(0,Math.min(1-w,old.x+dx));y=Math.max(0,Math.min(1-h,old.y+dy));
+    }else{
+      if(drag.corner.includes('l')){x=Math.max(0,Math.min(old.x+old.w-.1,old.x+dx));w=old.w+(old.x-x);}
+      if(drag.corner.includes('r'))w=Math.max(.1,Math.min(1-old.x,old.w+dx));
+      if(drag.corner.includes('t')){y=Math.max(0,Math.min(old.y+old.h-.1,old.y+dy));h=old.h+(old.y-y);}
+      if(drag.corner.includes('b'))h=Math.max(.1,Math.min(1-old.y,old.h+dy));
+    }
+    setCropRect({x,y,w,h});
+  }
+  function cropDragEnd(event:PointerEvent<HTMLElement>){
+    cropMove.current=null;
+    try{if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);}
+    catch{/* Already released by browser. */}
   }
   useEffect(()=>{
     if(!editing||!url||current?.kind!=='image')return;
@@ -92,7 +145,6 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
     photo.src=url;
     return()=>{cancelled=true;};
   },[editing,url,current?.kind]);
-  useEffect(()=>{cropRef.current=crop;if(editing)redraw();},[crop,editing]);
   function point(event:PointerEvent<HTMLCanvasElement>):Point{
     const rect=event.currentTarget.getBoundingClientRect();
     return {x:Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),
@@ -102,9 +154,9 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
     if(!marker||!imageReady||!pictureRef.current)return;
     try{event.currentTarget.setPointerCapture(event.pointerId);}catch{/* The brush remains usable if capture is unavailable. */}
     drawing.current=true;
-    const p=point(event);strokesRef.current.push({color:marker,points:[p]});
+    const p=point(event);strokesRef.current.push({color:marker,points:[p],width:brushRef.current});
     const ctx=event.currentTarget.getContext('2d');
-    if(ctx){ctx.fillStyle=marker;ctx.beginPath();ctx.arc(p.x*event.currentTarget.width,p.y*event.currentTarget.height,3.5,0,Math.PI*2);ctx.fill();}
+    if(ctx){ctx.fillStyle=marker;ctx.beginPath();ctx.arc(p.x*event.currentTarget.width,p.y*event.currentTarget.height,brushRef.current/2,0,Math.PI*2);ctx.fill();}
   }
   function markMove(event:PointerEvent<HTMLCanvasElement>){
     if(!drawing.current||!imageReady)return;
@@ -113,7 +165,7 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
     if(!previous)return;
     stroke.points.push(next);
     const ctx=event.currentTarget.getContext('2d');if(!ctx)return;
-    ctx.strokeStyle=stroke.color;ctx.lineWidth=7;ctx.lineCap='round';ctx.lineJoin='round';
+    ctx.strokeStyle=stroke.color;ctx.lineWidth=stroke.width;ctx.lineCap='round';ctx.lineJoin='round';
     ctx.beginPath();ctx.moveTo(previous.x*event.currentTarget.width,previous.y*event.currentTarget.height);
     ctx.lineTo(next.x*event.currentTarget.width,next.y*event.currentTarget.height);ctx.stroke();
   }
@@ -136,8 +188,20 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
     try{
       let target=url;let temporary='';
       if(editing&&current.kind==='image'&&canvasRef.current){
-        const blob=await new Promise<Blob>((resolve,reject)=>canvasRef.current!.toBlob(
-          output=>output?resolve(output):reject(new Error('Could not export image')),'image/png'));
+        const original=canvasRef.current;
+        let outputCanvas:HTMLCanvasElement=original;
+        if(crop&&cropRect){
+          const edit=document.createElement('canvas');
+          edit.width=Math.max(1,Math.round(original.width*cropRect.w));
+          edit.height=Math.max(1,Math.round(original.height*cropRect.h));
+          edit.getContext('2d')?.drawImage(original,
+            original.width*cropRect.x,original.height*cropRect.y,
+            original.width*cropRect.w,original.height*cropRect.h,
+            0,0,edit.width,edit.height);
+          outputCanvas=edit;
+        }
+        const blob=await new Promise<Blob>((resolve,reject)=>outputCanvas.toBlob(
+          result=>result?resolve(result):reject(new Error('Could not export image')),'image/png'));
         temporary=URL.createObjectURL(blob);target=temporary;
       }
       const link=document.createElement('a');link.href=target;
@@ -158,10 +222,21 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
     <div className="cg-q-gallery-stage" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       {loading?<div className="cg-q-gallery-wait" role="status"><i/><span>Opening attachment…</span></div>:
         problem?<div className="cg-q-gallery-wait">{problem}</div>:
-        editing&&current.kind==='image'?<canvas className={marker?'cg-q-drawing':''} ref={canvasRef}
-          width={900} height={700} onPointerDown={markStart} onPointerMove={markMove}
-          onPointerUp={markEnd} onPointerCancel={markEnd}
-          aria-label="Crop and mark photo"/>:
+        editing&&current.kind==='image'?<div className="cg-r-editor-workspace" ref={workspaceRef}>
+          <canvas className={marker?'cg-q-drawing':''} ref={canvasRef}
+            width={900} height={700} onPointerDown={markStart} onPointerMove={markMove}
+            onPointerUp={markEnd} onPointerCancel={markEnd}
+            aria-label="Mark photo using the chosen brush"/>
+          {crop&&cropRect&&<div className="cg-r-crop-box"
+            style={{left:(cropRect.x*100)+'%',top:(cropRect.y*100)+'%',width:(cropRect.w*100)+'%',height:(cropRect.h*100)+'%'}}
+            onPointerDown={event=>cropDragStart(event,'move')} onPointerMove={cropDragMove}
+            onPointerUp={cropDragEnd} onPointerCancel={cropDragEnd}>
+            <span className="cg-r-crop-grid"/>
+            {(['tl','tr','bl','br'] as const).map(corner=><span key={corner} className={'cg-r-crop-handle '+corner}
+              onPointerDown={event=>{event.stopPropagation();cropMove.current={corner,start:cropPoint(event),initial:{...cropRect}};try{event.currentTarget.setPointerCapture(event.pointerId);}catch{}}}
+              onPointerMove={cropDragMove} onPointerUp={cropDragEnd} onPointerCancel={cropDragEnd}/>)}
+          </div>}
+        </div>:
         current.kind==='image'?<img src={url} alt={displayName(current,meta)}/>:
         current.kind==='video'?<video src={url} controls playsInline preload="metadata"/>:
         <div className="cg-q-gallery-document"><span>▤</span><strong>{displayName(current,meta)}</strong>
@@ -169,33 +244,39 @@ export function ChatMediaGallery({user,bookingId,items,initialId,secretKey,metaF
       {index>0&&!editing&&<button type="button" className="cg-q-gallery-arrow left" onClick={()=>next(-1)} aria-label="Previous attachment">‹</button>}
       {index<items.length-1&&!editing&&<button type="button" className="cg-q-gallery-arrow right" onClick={()=>next(1)} aria-label="Next attachment">›</button>}
     </div>
-    {editing&&current.kind==='image'&&<div className="cg-q-gallery-edit">
-      <div className="cg-r-tools-row"><span className="cg-r-tools-label">Frame</span>
-        <button type="button" className={crop?'active':''} onClick={()=>setCrop(true)}>▣ Crop</button>
-        <button type="button" className={!crop?'active':''} onClick={()=>setCrop(false)}>▤ Fit</button>
+    {editing&&current.kind==='image'&&<div className="cg-q-gallery-edit cg-r-editor-dock">
+      <div className="cg-r-editor-dock-title"><strong>Photo editor</strong><small>{crop?'Drag the gold corners to crop':marker?'Draw directly on the picture':'Choose a tool to edit'}</small></div>
+      <div className="cg-r-tools-row cg-r-editor-main-tools">
+        <button type="button" className={crop?'active':''} onClick={frameCrop}>▣ <span>Crop</span></button>
+        <button type="button" onClick={rotatePhoto}>↻ <span>Rotate</span></button>
+        <button type="button" onClick={resetFrame}>⛶ <span>Full image</span></button>
+        <button type="button" onClick={()=>{setCrop(false);setCropRect(null);setMarker(marker||markerColors[0].value);}}>✎ <span>Draw</span></button>
       </div>
-      <div className="cg-r-tools-row"><span className="cg-r-tools-label">Marker</span>
-        {markerColors.map(color=><button key={color.value} type="button" className={marker===color.value?'active cg-r-color':'cg-r-color'}
-          title={color.name+' marker'} aria-label={color.name+' marker'}
-          style={{background:color.value}} onClick={()=>setMarker(marker===color.value?'':color.value)}/>)}
-        <small>{marker?'Draw on photo':'Choose a color'}</small>
-      </div>
-      <div className="cg-r-tools-row cg-r-tools-actions">
-        <button type="button" onClick={undoMark}>↶ Undo</button>
-        <button type="button" onClick={clearMarks}>✕ Clear</button>
-        <button type="button" className="cg-r-edit-done" onClick={()=>setMarker('')}>✓ Finish marking</button>
+      <div className="cg-r-tools-row cg-r-editor-pen-row">
+        <span className="cg-r-tools-label">Ink</span>
+        {markerColors.map(color=><button key={color.value} type="button"
+          className={marker===color.value?'active cg-r-color':'cg-r-color'}
+          title={color.name+' marker'} aria-label={color.name+' marker'} aria-pressed={marker===color.value}
+          style={{background:color.value}} onClick={()=>{setCrop(false);setCropRect(null);setMarker(color.value);}}/>)}
+        <label className="cg-r-pen-size" aria-label="Marker thickness">Size
+          <input type="range" min="3" max="22" step="1" value={brush} onChange={event=>{brushRef.current=Number(event.target.value);setBrush(brushRef.current);}}/>
+        </label>
+        <button type="button" className="cg-r-tool-undo" onClick={undoMark}>↶ <span>Undo</span></button>
+        <button type="button" className="cg-r-tool-clear" onClick={clearMarks}>Clear</button>
       </div>
     </div>}
     <div className="cg-q-gallery-filmstrip" aria-label="Attachments in conversation">{items.map((item,i)=>
       <button type="button" key={item.id} aria-label={'Attachment '+(i+1)} aria-current={index===i?'true':undefined}
         className={index===i?'selected':''} onClick={()=>setIndex(i)}>{item.kind==='image'?'▧':item.kind==='video'?'▶':'▤'}</button>)}</div>
     <footer className="cg-q-gallery-actions">
-      <button disabled={!url||saving||(editing&&!imageReady)} onClick={()=>void download()}>↓ <span>{saving?'Saving…':'Download'}</span></button>
-      {current.kind==='image'&&<button disabled={!url} onClick={()=>setEditing(value=>!value)}>✎ <span>{editing?'View':'Edit photo'}</span></button>}
-      <button onClick={()=>{onReply(current.id);onClose();}}>↪ <span>Reply</span></button>
-      <button onClick={()=>{onActions(current.id);onClose();}}>♡ <span>React</span></button>
+      {editing?<><button disabled={!url||saving||!imageReady} onClick={()=>void download()}>↓ <span>{saving?'Saving…':'Save edited photo'}</span></button>
+        <button onClick={()=>{setEditing(false);setCrop(false);setCropRect(null);setMarker('');}}>× <span>Cancel edit</span></button></>:
+        <><button disabled={!url||saving} onClick={()=>void download()}>↓ <span>{saving?'Saving…':'Download'}</span></button>
+        {current.kind==='image'&&<button disabled={!url} onClick={()=>setEditing(true)}>✎ <span>Edit photo</span></button>}
+        <button onClick={()=>{onReply(current.id);onClose();}}>↪ <span>Reply</span></button>
+        <button onClick={()=>{onActions(current.id);onClose();}}>♡ <span>React</span></button></>}
     </footer>
     {downloadError&&<p className="cg-q-gallery-hint" role="alert">{downloadError}</p>}
-    {editing&&<p className="cg-q-gallery-hint">Draw on the image, then use Download to save your edits. The original stays unchanged.</p>}
+    {editing&&<p className="cg-q-gallery-hint">Edits are saved as a new image. The original photo remains unchanged.</p>}
   </div>;
 }
