@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { gigImageUrl, publicRequest, type PublicGig, type PublicGigPage } from './api';
+import { apiRequest, gigImageUrl, publicRequest, type PublicGig, type PublicGigPage } from './api';
 import { InstitutionPicker } from './InstitutionPicker';
 import { serviceCatalog, serviceCategories } from './serviceCatalog';
 import type { User } from 'firebase/auth';
@@ -28,22 +28,28 @@ export function GigCard({ gig, onOpen }: { gig: PublicGig; onOpen: (id: string) 
   </button>;
 }
 
-export function FeaturedGigs({ onOpen, onBrowse, profileScope }: { onOpen: (id: string) => void; onBrowse: () => void; profileScope?:CampusScope }) {
+export function FeaturedGigs({ onOpen, onBrowse, profileScope, user }: { onOpen: (id: string) => void; onBrowse: () => void; profileScope?:CampusScope;user:User|null }) {
   const [gigs, setGigs] = useState<PublicGig[]>([]);
   const [loading, setLoading] = useState(true);
+  const [personalised,setPersonalised] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
+    if(user&&!profileScope?.state){setGigs([]);setLoading(false);return()=>controller.abort();}
     const scope=initialCampusScope(profileScope);
     const params=new URLSearchParams({limit:'4'});
     if(scope.state)params.set('state',scope.state);
     if(scope.institutionId)params.set('institutionId',scope.institutionId);
-    void publicRequest<PublicGigPage>(`/v1/public/gigs?${params}`, controller.signal)
-      .then((data) => setGigs(data.gigs))
-      .catch(() => {})
+    setLoading(true);
+    const local=()=>publicRequest<PublicGigPage>(`/v1/public/gigs?${params}`,controller.signal).then(data=>{setGigs(data.gigs);setPersonalised(false);});
+    const load=user?apiRequest<PublicGigPage>(user,'/v1/me/recommended-gigs',{signal:controller.signal})
+      .then(data=>{if(!controller.signal.aborted){setGigs(data.gigs.slice(0,4));setPersonalised(true);}})
+      .catch(()=>controller.signal.aborted?undefined:local()):local();
+    void load
+      .catch(() => {if(!controller.signal.aborted)setGigs([]);})
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [profileScope?.state,profileScope?.institutionId]);
-  return <section className="section-wrap home-featured"><div className="section-heading"><div><span className="eyebrow">FRESH FROM THE COMMUNITY</span><h2>Discover real <i>talent.</i></h2></div><button className="text-link" onClick={onBrowse}>Browse all gigs ↗</button></div>
+  }, [profileScope?.state,profileScope?.institutionId,user]);
+  return <section className="section-wrap home-featured"><div className="section-heading"><div><span className="eyebrow">{personalised?'PICKED FOR YOUR CAMPUS':'FRESH FROM THE COMMUNITY'}</span><h2>{personalised?<>Skills for <i>you.</i></>:<>Discover real <i>talent.</i></>}</h2></div><button className="text-link" onClick={onBrowse}>Browse all gigs ↗</button></div>
     {gigs.length ? <div className="discovery-grid">{gigs.map((gig) => <GigCard gig={gig} key={gig.id} onOpen={onOpen} />)}</div> : <div className="home-featured-empty"><span>✦</span><div><strong>{loading ? 'Finding great skills…' : 'New gigs are on their way.'}</strong><p>Explore skill categories while our verified providers prepare their services.</p></div><button className="button button-dark" onClick={onBrowse}>Explore gigs ↗</button></div>}
   </section>;
 }

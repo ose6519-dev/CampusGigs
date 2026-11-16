@@ -337,7 +337,7 @@ function App() {
             <div className="category-grid">{featuredCategories.map((category) => <CategoryCard key={category.name} category={category} onClick={() => goToCategory(category.name)} />)}</div>
             <p className="phase-note">Browse verified services, find the right person and see their work.</p>
           </section>
-          <FeaturedGigs onOpen={openGig} onBrowse={() => goTo('categories')} profileScope={{state:me?.profile.state_name||'',institutionId:me?.profile.institution_id||'',name:me?.profile.campus||''}} />
+          <FeaturedGigs user={user} onOpen={openGig} onBrowse={() => goTo('categories')} profileScope={{state:me?.profile.state_name||'',institutionId:me?.profile.institution_id||'',name:me?.profile.campus||''}} />
           <section className="section-wrap connect-panel"><div><span className="eyebrow">TWO WORLDS. ONE COMMUNITY.</span><h2>Looking for products<br />instead of services?</h2><p>CampusGigs is for skills and services. Shop physical goods on CampSell.</p></div><a className="button button-gold" href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer">Explore CampSell <span>↗</span></a></section>
         </>}
 

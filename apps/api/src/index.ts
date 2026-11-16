@@ -10,6 +10,7 @@ import { notifications } from './notifications.ts';
 import { validateSchoolAcademics } from './academicCatalog.ts';
 import { community } from './community.ts';
 import { searchAccount } from './searchAccount.ts';
+import { recommendations } from './recommendations.ts';
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
@@ -84,7 +85,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   const requestUrl = new URL(request.url);
   const path = requestUrl.pathname;
   if (path === '/health' && request.method === 'GET') {
-    return json({ service: 'campusgigs-api', status: 'ok', phase: 'K', bookingsEnabled: true, paymentsEnabled: false });
+    return json({ service: 'campusgigs-api', status: 'ok', phase: 'L', bookingsEnabled: true, paymentsEnabled: false });
   }
   if (!path.startsWith('/v1/')) return json({ error: 'Not found' }, 404);
   if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
@@ -175,6 +176,9 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   const activityResponse = await notifications({request,url:requestUrl,env,user,json,rateLimit:checkWriteRateLimit});
   if(activityResponse)return activityResponse;
+
+  const recommended = await recommendations({request,url:requestUrl,env,user,profile,json});
+  if(recommended)return recommended;
 
   const bookingResponse = await bookings({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit });
   if (bookingResponse) return bookingResponse;
