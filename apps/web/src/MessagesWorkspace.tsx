@@ -93,7 +93,7 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
       const newest=page.messages.at(-1)?.id||'';
       if(newest&&newest!==lastMessageId.current){
         const last=page.messages.at(-1);
-        if(last?.sender_uid!==user.uid&&document.visibilityState==='visible'){
+        if((!quiet||last?.sender_uid!==user.uid)&&document.visibilityState==='visible'){
           void apiRequest(user,`/v1/chats/${id}/read`,{method:'POST'}).then(refreshChats).catch(()=>{});
         }
         if(!quiet||!lastMessageId.current||last?.sender_uid===user.uid){
@@ -295,7 +295,7 @@ export function MessagesWorkspace({user,initialBookingId,onLogin,onBack,onProfil
           {recording?<div className="cg-record-bar"><span className="cg-record-pulse">●</span><strong>Recording {Math.floor(seconds/60)}:{String(seconds%60).padStart(2,'0')}</strong><button onClick={()=>stopVoice(true)}>Discard</button><button className="cg-record-send" onClick={()=>stopVoice()}>Send ↗</button></div>
           :<form className="cg-composer" onSubmit={(event:FormEvent)=>{event.preventDefault();void send();}}>
             <button type="button" className="cg-tool-btn" title="Attach photo, video or file" aria-label="Attach file" onClick={()=>fileRef.current?.click()} disabled={busy}>＋</button>
-            <input ref={fileRef} type="file" className="cg-file-input" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,audio/webm,audio/ogg,audio/mpeg,audio/mp4,application/pdf,text/plain" onChange={event=>void attach(event)}/>
+            <input ref={fileRef} type="file" className="cg-file-input" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,audio/webm,audio/ogg,audio/mpeg,audio/mp4,application/pdf,text/plain,.doc,.docx,.xls,.xlsx" onChange={event=>void attach(event)}/>
             <div className="cg-compose-field"><textarea ref={inputRef} aria-label="Message" value={draft} rows={1} maxLength={2000}
               placeholder="Write a message…" onChange={event=>{setDraft(event.target.value);notifyTyping();}}
               onKeyDown={event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();void send();}}}/>

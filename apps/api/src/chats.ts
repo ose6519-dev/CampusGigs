@@ -17,6 +17,10 @@ const contentTypes:Record<string,{kind:string;size:number}>={
   'audio/webm':{kind:'audio',size:8*1024*1024},'audio/ogg':{kind:'audio',size:8*1024*1024},
   'audio/mp4':{kind:'audio',size:8*1024*1024},'audio/mpeg':{kind:'audio',size:8*1024*1024},
   'application/pdf':{kind:'file',size:8*1024*1024},'text/plain':{kind:'file',size:2*1024*1024},
+  'application/msword':{kind:'file',size:8*1024*1024},
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document':{kind:'file',size:8*1024*1024},
+  'application/vnd.ms-excel':{kind:'file',size:8*1024*1024},
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':{kind:'file',size:8*1024*1024},
 };
 const asObject=(value:unknown):Record<string,unknown>=>{
   if(!value||typeof value!=='object'||Array.isArray(value))throw new InputError('Invalid message');
