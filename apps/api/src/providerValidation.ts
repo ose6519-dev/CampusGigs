@@ -4,6 +4,13 @@ import { institutionIdPattern, nigeriaStates } from './institutions.ts';
 export const skillCategories = [
   'Design & Creative', 'Tech & Digital', 'Media & Editing', 'Personal Services',
   'Tutoring & Skills', 'Typing & Proofreading', 'Events & Lifestyle', 'Business Support',
+  'Barbing & Grooming', 'Hairdressing & Braiding', 'Makeup & Nails',
+  'Tailoring & Fashion', 'Electrical Services', 'Phone & Gadget Repairs',
+  'Computer Repairs', 'Plumbing & Water Works', 'Carpentry & Furniture',
+  'Painting & Decoration', 'Appliance Repairs', 'Laundry & Cleaning',
+  'Catering & Baking', 'Food & Small Chops', 'Photography & Videography',
+  'Event Planning & Rentals', 'Delivery & Errands', 'Printing & Photocopy',
+  'Automotive & Bike Services', 'Agriculture & Gardening',
 ] as const;
 
 function recordOf(value: unknown, allowed: readonly string[]): Record<string, unknown> {

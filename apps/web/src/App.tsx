@@ -21,6 +21,8 @@ import { WelcomeSetup } from './WelcomeSetup';
 import { PeopleDirectory } from './PeopleDirectory';
 import { ProviderPublicProfile, FollowingPanel } from './ProviderPublicProfile';
 import { LocationSettingsPanel } from './LocationSettingsPanel';
+import { serviceCatalog } from './serviceCatalog';
+import { NotificationCenter } from './NotificationCenter';
 
 function authMessage(error:unknown):string {
   const code=(error as {code?:string})?.code;
@@ -56,16 +58,9 @@ function routeFromLocation(): { view: View; gigId: string; category: string } {
   return { view: 'explore', gigId: '', category: '' };
 }
 
-const categories = [
-  { icon: '✎', name: 'Design & Creative', tag: 'Graphics, brand identity', tone: 'pink' },
-  { icon: '⌘', name: 'Tech & Digital', tag: 'Websites, tech support', tone: 'lavender' },
-  { icon: '◈', name: 'Media & Editing', tag: 'Photos, videos, audio', tone: 'orange' },
-  { icon: '☼', name: 'Personal Services', tag: 'Beauty, styling, wellness', tone: 'mint' },
-  { icon: '✦', name: 'Tutoring & Skills', tag: 'Lessons, coaching', tone: 'blue' },
-  { icon: '▧', name: 'Typing & Proofreading', tag: 'Formatting, proofreading', tone: 'peach' },
-  { icon: '◎', name: 'Events & Lifestyle', tag: 'Planning, photography', tone: 'yellow' },
-  { icon: '↗', name: 'Business Support', tag: 'Admin, marketing', tone: 'grey' },
-];
+const categories = serviceCatalog;
+const featuredCategories = ['Barbing & Grooming','Hairdressing & Braiding','Phone & Gadget Repairs',
+  'Electrical Services','Tech & Digital','Tutoring & Skills'].map(name=>categories.find(category=>category.name===name)!).filter(Boolean);
 
 function Icon({ children }: { children: ReactNode }) {
   return <span aria-hidden="true">{children}</span>;
@@ -271,7 +266,7 @@ function App() {
     if (!user) return;
     setSaving(true);
     try {
-      await apiRequest(user, '/v1/me', { method: 'PATCH', body: JSON.stringify(form) });
+      await apiRequest(user, '/v1/me', { method: 'PATCH', body: JSON.stringify({displayName:form.displayName,city:form.city,bio:form.bio}) });
       await refreshProfile(user);
       setNotice('Profile updated.');
     } catch (error) {
@@ -307,6 +302,7 @@ function App() {
           </nav>
           <div className="header-actions">
             <span className="eyebrow hide-mobile">MADE FOR NIGERIA</span>
+            <NotificationCenter user={user?.emailVerified&&me?.profile.onboarding_completed?user:null} onNavigate={(path)=>{if(path==='/bookings')goTo('bookings');else if(path==='/provide')goTo('provider');else if(path.startsWith('/people/'))openPerson(path.slice('/people/'.length));else goTo('profile');}} />
             <button className="header-profile" type="button" onClick={() => goTo('profile')} aria-label={user ? 'Open my CampusGigs profile' : 'Sign in to CampusGigs'}>
               {user?.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" /> : <Icon>◉</Icon>}
               <span>{user ? 'My account' : 'Sign in'}</span>
@@ -338,7 +334,7 @@ function App() {
           <div className="value-ribbon"><span>STUDENTS</span><span className="ribbon-star">✦</span><span>CREATORS</span><span className="ribbon-star">✦</span><span>EVERYDAY EXPERTS</span><span className="ribbon-star">✦</span><span>EVERYWHERE IN NIGERIA</span></div>
           <section className="section-wrap feature-section">
             <div className="section-heading"><div><span className="eyebrow">DISCOVER WHAT'S POSSIBLE</span><h2>Find your kind of <i>expert.</i></h2></div><button className="text-link" onClick={() => goTo('categories')}>All categories <span>↗</span></button></div>
-            <div className="category-grid">{categories.slice(0, 6).map((category) => <CategoryCard key={category.name} category={category} onClick={() => goToCategory(category.name)} />)}</div>
+            <div className="category-grid">{featuredCategories.map((category) => <CategoryCard key={category.name} category={category} onClick={() => goToCategory(category.name)} />)}</div>
             <p className="phase-note">Browse verified services, find the right person and see their work.</p>
           </section>
           <FeaturedGigs onOpen={openGig} onBrowse={() => goTo('categories')} profileScope={{state:me?.profile.state_name||'',institutionId:me?.profile.institution_id||'',name:me?.profile.campus||''}} />

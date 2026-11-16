@@ -6,6 +6,7 @@ import { phaseB } from './phaseB';
 import { bookings, adminBookings } from './bookings';
 import { parseOnboarding } from './onboardingValidation';
 import { findInstitution, institutionIdPattern, nigeriaStates } from './institutions.ts';
+import { notifications } from './notifications.ts';
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
@@ -19,7 +20,7 @@ function addCors(response: Response, request: Request, allowed: string): Respons
     response.headers.set('Access-Control-Allow-Origin', origin);
     response.headers.set('Vary', 'Origin');
     response.headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
   }
   return response;
 }
@@ -80,10 +81,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   const requestUrl = new URL(request.url);
   const path = requestUrl.pathname;
   if (path === '/health' && request.method === 'GET') {
-    return json({ service: 'campusgigs-api', status: 'ok', phase: 'D', bookingsEnabled: true, paymentsEnabled: false });
+    return json({ service: 'campusgigs-api', status: 'ok', phase: 'G', bookingsEnabled: true, paymentsEnabled: false });
   }
   if (!path.startsWith('/v1/')) return json({ error: 'Not found' }, 404);
-  if (!['GET', 'POST', 'PATCH'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
+  if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
 
   if (path.startsWith('/v1/public/')) {
     return await phaseB({ request, url: requestUrl, env, user: null, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false })
@@ -130,7 +131,7 @@ async function route(request: Request, env: Env): Promise<Response> {
         SELECT COUNT(*) AS total, SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active FROM gigs
       `).first();
       const bookingCounts = await env.DB.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN status='requested' THEN 1 ELSE 0 END) AS pending FROM service_bookings`).first();
-      return json({ totals, providers, gigCounts, bookingCounts, recent: recent.results || [], phase: 'D', dataSource: 'CampusGigs D1' });
+      return json({ totals, providers, gigCounts, bookingCounts, recent: recent.results || [], phase: 'G', dataSource: 'CampusGigs D1' });
     }
 
     if (path === '/v1/admin/members') {
@@ -161,6 +162,9 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   const phaseBResponse = await phaseB({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit, isAdmin: false });
   if (phaseBResponse) return phaseBResponse;
+
+  const activityResponse = await notifications({request,url:requestUrl,env,user,json,rateLimit:checkWriteRateLimit});
+  if(activityResponse)return activityResponse;
 
   const bookingResponse = await bookings({ request, url: requestUrl, env, user, json, readJson: readBody, rateLimit: checkWriteRateLimit });
   if (bookingResponse) return bookingResponse;
@@ -208,10 +212,11 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (path === '/v1/me' && request.method === 'PATCH') {
     await checkWriteRateLimit(env, user.uid);
     const changes = parseProfileUpdate(await readBody(request));
+    if(changes.campus!==undefined) throw new InputError('Choose your school through the verified campus picker in Profile → Campus & privacy');
     const next = {
       display_name: changes.displayName ?? profile.display_name,
       bio: changes.bio ?? profile.bio,
-      campus: changes.campus ?? profile.campus,
+      campus: profile.campus,
       city: changes.city ?? profile.city,
       avatar_url: changes.avatarUrl ?? profile.avatar_url,
     };

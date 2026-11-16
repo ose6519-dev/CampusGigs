@@ -1,0 +1,33 @@
+// Keep category names in sync with the API allowlist. Existing category names are stable.
+export const serviceCatalog = [
+  { icon:'✎',name:'Design & Creative',tag:'Graphics & branding',tone:'pink' },
+  { icon:'⌘',name:'Tech & Digital',tag:'Websites & software',tone:'lavender' },
+  { icon:'◈',name:'Media & Editing',tag:'Video, audio & edits',tone:'orange' },
+  { icon:'☼',name:'Personal Services',tag:'Personal support',tone:'mint' },
+  { icon:'✦',name:'Tutoring & Skills',tag:'Lessons & coaching',tone:'blue' },
+  { icon:'▧',name:'Typing & Proofreading',tag:'Typing & formatting',tone:'peach' },
+  { icon:'◎',name:'Events & Lifestyle',tag:'Events & lifestyle',tone:'yellow' },
+  { icon:'↗',name:'Business Support',tag:'Admin & promotion',tone:'grey' },
+  { icon:'✂',name:'Barbing & Grooming',tag:'Haircuts & grooming',tone:'yellow' },
+  { icon:'❋',name:'Hairdressing & Braiding',tag:'Braids, wigs & styling',tone:'pink' },
+  { icon:'✧',name:'Makeup & Nails',tag:'Beauty & nail care',tone:'peach' },
+  { icon:'✄',name:'Tailoring & Fashion',tag:'Sewing & alterations',tone:'lavender' },
+  { icon:'ϟ',name:'Electrical Services',tag:'Wiring & installations',tone:'yellow' },
+  { icon:'▣',name:'Phone & Gadget Repairs',tag:'Phones & gadgets',tone:'blue' },
+  { icon:'⌨',name:'Computer Repairs',tag:'Laptop & PC fixes',tone:'mint' },
+  { icon:'♧',name:'Plumbing & Water Works',tag:'Pipes & fittings',tone:'blue' },
+  { icon:'▤',name:'Carpentry & Furniture',tag:'Furniture & woodwork',tone:'orange' },
+  { icon:'▧',name:'Painting & Decoration',tag:'Walls & interiors',tone:'pink' },
+  { icon:'⚙',name:'Appliance Repairs',tag:'Home appliance fixes',tone:'grey' },
+  { icon:'✴',name:'Laundry & Cleaning',tag:'Laundry & cleaning',tone:'mint' },
+  { icon:'♨',name:'Catering & Baking',tag:'Cakes & catering',tone:'orange' },
+  { icon:'◒',name:'Food & Small Chops',tag:'Snacks & meals',tone:'peach' },
+  { icon:'◉',name:'Photography & Videography',tag:'Photo & video shoots',tone:'lavender' },
+  { icon:'✳',name:'Event Planning & Rentals',tag:'Decor & equipment',tone:'yellow' },
+  { icon:'↗',name:'Delivery & Errands',tag:'Dispatch & errands',tone:'mint' },
+  { icon:'▦',name:'Printing & Photocopy',tag:'Print, scan & copy',tone:'grey' },
+  { icon:'⚒',name:'Automotive & Bike Services',tag:'Vehicle care & fixes',tone:'orange' },
+  { icon:'❀',name:'Agriculture & Gardening',tag:'Gardens & agriculture',tone:'mint' },
+] as const;
+
+export const serviceCategories: string[] = serviceCatalog.map(service=>service.name);

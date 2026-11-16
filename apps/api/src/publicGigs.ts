@@ -17,6 +17,29 @@ export type PublicGigFilters = {
 };
 
 const escaped = (input: string) => input.replace(/[\\%_]/g, '\\$&');
+
+// Nigerians often search by trade name, local term or abbreviation instead of the
+// formal category label. Expand only a small, fixed vocabulary; never interpolate
+// user input into SQL. Multi-word queries still require every word to match.
+const tradeAliases: Record<string, string[]> = {
+  barber: ['Barbing & Grooming'], barbing: ['Barbing & Grooming'], haircut: ['Barbing & Grooming'],
+  braids: ['Hairdressing & Braiding'], braiding: ['Hairdressing & Braiding'], hairdresser: ['Hairdressing & Braiding'],
+  electrician: ['Electrical Services'], wiring: ['Electrical Services'],
+  phone: ['Phone & Gadget Repairs'], smartphone: ['Phone & Gadget Repairs'],
+  laptop: ['Computer Repairs'], computer: ['Computer Repairs'],
+  plumber: ['Plumbing & Water Works'], plumbing: ['Plumbing & Water Works'],
+  tailor: ['Tailoring & Fashion'], sewing: ['Tailoring & Fashion'],
+  cleaning: ['Laundry & Cleaning'], laundry: ['Laundry & Cleaning'],
+  baker: ['Catering & Baking'], cakes: ['Catering & Baking'],
+  printing: ['Printing & Photocopy'], photocopy: ['Printing & Photocopy'],
+  dispatch: ['Delivery & Errands'], delivery: ['Delivery & Errands'],
+  mechanic: ['Automotive & Bike Services'], vulcanizer: ['Automotive & Bike Services'],
+  photographer: ['Photography & Videography'], photoshoot: ['Photography & Videography'],
+};
+
+export function serviceSearchWords(query: string): string[] {
+  return query.trim().split(/\s+/u).filter(Boolean).slice(0, 6);
+}
 const single = (url: URL, key: string, max: number) => {
   const values = url.searchParams.getAll(key);
   if (values.length > 1 || (values[0] || '').length > max) throw new InputError(`Invalid ${key} filter`);
@@ -65,9 +88,16 @@ export function publicGigQuery(filters: PublicGigFilters): { sql: string; params
   const where = [publicGigWhere];
   const params: Array<string | number> = [];
   if (filters.q) {
-    const pattern = `%${escaped(filters.q)}%`;
-    where.push(`(g.title LIKE ? ESCAPE '\\' OR g.description LIKE ? ESCAPE '\\' OR p.display_name LIKE ? ESCAPE '\\')`);
-    params.push(pattern, pattern, pattern);
+    for (const word of serviceSearchWords(filters.q)) {
+      const pattern = `%${escaped(word)}%`;
+      const words = [`g.title LIKE ? ESCAPE '\\'`, `g.description LIKE ? ESCAPE '\\'`,
+        `g.category LIKE ? ESCAPE '\\'`, `p.display_name LIKE ? ESCAPE '\\'`,
+        `g.location_name LIKE ? ESCAPE '\\'`, `p.campus LIKE ? ESCAPE '\\'`];
+      params.push(pattern,pattern,pattern,pattern,pattern,pattern);
+      const aliases=tradeAliases[word.toLowerCase()]||[];
+      for (const category of aliases) {words.push('g.category = ?');params.push(category);}
+      where.push(`(${words.join(' OR ')})`);
+    }
   }
   if (filters.category) { where.push('g.category = ?'); params.push(filters.category); }
   if (filters.state) { where.push('g.state_name = ?'); params.push(filters.state); }

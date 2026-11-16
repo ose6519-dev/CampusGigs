@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { User } from 'firebase/auth';
 import { apiRequest, gigImageUrl, type Gig, type ProviderGigs, type ProviderStatus } from './api';
+import { serviceCategories } from './serviceCatalog';
 
-const categories = ['Design & Creative','Tech & Digital','Media & Editing','Personal Services','Tutoring & Skills','Typing & Proofreading','Events & Lifestyle','Business Support'];
+const categories = serviceCategories;
 const initialGig = { title:'', description:'', category:categories[0], priceNaira:'', deliveryDays:3, locationType:'online', locationName:'', paymentOption:'preview' };
 const money = (kobo: number) => `₦${(kobo / 100).toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
 

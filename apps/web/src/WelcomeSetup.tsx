@@ -2,12 +2,9 @@ import { useState, type FormEvent } from 'react';
 import type { User } from 'firebase/auth';
 import { apiRequest, type Profile } from './api';
 import { InstitutionPicker } from './InstitutionPicker';
+import { serviceCatalog } from './serviceCatalog';
 
-const interests=[
-  ['✎','Design & Creative'],['⌘','Tech & Digital'],['◈','Media & Editing'],
-  ['☼','Personal Services'],['✦','Tutoring & Skills'],['▧','Typing & Proofreading'],
-  ['✳','Events & Lifestyle'],['↗','Business Support'],
-] as const;
+const interests = serviceCatalog.map(({icon,name})=>[icon,name] as const);
 type UserKind='buyer'|'provider'|'both';
 type StudentStatus='student'|'non_student';
 

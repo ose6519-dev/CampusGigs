@@ -1,18 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { gigImageUrl, publicRequest, type PublicGig, type PublicGigPage } from './api';
 import { InstitutionPicker } from './InstitutionPicker';
+import { serviceCatalog, serviceCategories } from './serviceCatalog';
 
-export const gigCategories = [
-  'Design & Creative', 'Tech & Digital', 'Media & Editing', 'Personal Services',
-  'Tutoring & Skills', 'Typing & Proofreading', 'Events & Lifestyle', 'Business Support',
-];
+export const gigCategories = serviceCategories;
 
 export const naira = (kobo: number) => `₦${new Intl.NumberFormat('en-NG', { maximumFractionDigits: 0 }).format(kobo / 100)}`;
 
 function serviceIcon(category: string) {
-  return ({ 'Design & Creative': '✦', 'Tech & Digital': '⌘', 'Media & Editing': '◈',
-    'Personal Services': '☼', 'Tutoring & Skills': '✦', 'Typing & Proofreading': '▧',
-    'Events & Lifestyle': '◎', 'Business Support': '↗' } as Record<string, string>)[category] || '✦';
+  return serviceCatalog.find(item=>item.name===category)?.icon || '✦';
 }
 
 export function GigCard({ gig, onOpen }: { gig: PublicGig; onOpen: (id: string) => void }) {

@@ -4,11 +4,14 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { phaseB } from '../src/phaseB.ts';
 import { parseScope } from '../src/institutions.ts';
+import { notifications } from '../src/notifications.ts';
+import { skillCategories } from '../src/providerValidation.ts';
+import { serviceSearchWords } from '../src/publicGigs.ts';
 
 function fixture(){
   const db=new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys=ON');
-  for(const file of ['0001_profiles.sql','0002_providers_gigs.sql','0003_bookings.sql','0004_member_onboarding.sql','0005_campus_social.sql','0006_institution_directory.sql'])
+  for(const file of ['0001_profiles.sql','0002_providers_gigs.sql','0003_bookings.sql','0004_member_onboarding.sql','0005_campus_social.sql','0006_institution_directory.sql','0007_phase_g_notifications.sql'])
     db.exec(readFileSync(new URL(`../migrations/${file}`,import.meta.url),'utf8'));
   const bayelsa=db.prepare("SELECT id,name FROM institutions WHERE state_name='Bayelsa' AND aliases LIKE '%NDU%' LIMIT 1").get();
   const lagos=db.prepare("SELECT id,name FROM institutions WHERE state_name='Lagos' AND aliases LIKE '%UNILAG%' LIMIT 1").get();
@@ -33,9 +36,10 @@ function fixture(){
   }}};
   async function request(path,{method='GET',user=null,body=null}={}){
     const url=new URL(path,'https://api.example');
-    const response=await phaseB({request:new Request(url,{method,headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined}),url,env,
+    const context={request:new Request(url,{method,headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined}),url,env,
       user:user?{uid:user,emailVerified:true,email:'test@example.com'}:null,isAdmin:false,
-      json:(data,status=200)=>Response.json(data,{status}),readJson:async()=>body,rateLimit:async()=>{}});
+      json:(data,status=200)=>Response.json(data,{status}),readJson:async()=>body,rateLimit:async()=>{}};
+    const response=await phaseB(context) || (context.user && await notifications({...context,user:context.user}));
     assert.ok(response,`Unhandled route ${path}`);
     return {status:response.status,body:await response.json()};
   }
@@ -93,4 +97,68 @@ test('Phase F public provider cards, opt-in presence and private-id-free follows
   const removed=await request(`/v1/me/follows/${publicId}`,{method:'DELETE',user:'buyer'});
   assert.equal(removed.body.followerCount,0);
   db.close();
+});
+
+test('Phase G keeps original categories and accepts familiar Nigerian trades',async()=>{
+  for(const category of ['Design & Creative','Barbing & Grooming','Hairdressing & Braiding','Electrical Services','Phone & Gadget Repairs','Plumbing & Water Works','Laundry & Cleaning'])
+    assert.ok(skillCategories.includes(category),`Missing ${category}`);
+  assert.deepEqual(serviceSearchWords('  phone   repair shop '),['phone','repair','shop']);
+  const {db,request}=fixture();
+  db.prepare(`INSERT INTO gigs(id,provider_uid,title,description,category,price_kobo,delivery_days,location_type,location_name,payment_option,state_name)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run('barb-bay','bay','Student grooming at your hostel',
+      'Clean cuts and tidy grooming available around campus.','Barbing & Grooming',200000,1,'in_person','Amassoma','preview','Bayelsa');
+  for(const query of ['barber','barbing','haircut']){
+    const result=await request(`/v1/public/gigs?state=Bayelsa&q=${query}`);
+    assert.ok(result.body.gigs.some(g=>g.id==='barb-bay'),`Search failed for ${query}`);
+  }
+  assert.equal((await request('/v1/public/gigs?state=Lagos&q=barber')).body.gigs.length,0);
+  const providers=await request('/v1/public/providers?state=Bayelsa&q=Design');
+  assert.equal(providers.body.providers.length,1,'People search should match offered skills');
+  db.close();
+});
+
+test('Phase G gig publishing accepts added trades but rejects a spoofed state or school',async()=>{
+  const {db,request,bayelsa,lagos}=fixture();
+  const gig={title:'Barbing at your hostel',description:'Neat haircuts and professional grooming around campus.',
+    category:'Barbing & Grooming',priceKobo:150000,deliveryDays:1,locationType:'in_person',
+    locationName:'Amassoma',paymentOption:'preview',state:'Bayelsa',institutionId:bayelsa.id};
+  await assert.rejects(()=>request('/v1/provider/gigs',{method:'POST',user:'bay',body:{...gig,state:'Lagos',institutionId:lagos.id}}),/state must match/);
+  await assert.rejects(()=>request('/v1/provider/gigs',{method:'POST',user:'bay',body:{...gig,institutionId:lagos.id}}),/confirmed institution/);
+  const published=await request('/v1/provider/gigs',{method:'POST',user:'bay',body:gig});
+  assert.equal(published.status,201);
+  assert.equal(db.prepare('SELECT category FROM gigs WHERE id=?').get(published.body.id).category,'Barbing & Grooming');
+  db.close();
+});
+
+test('Phase G inbox isolates users, deduplicates follows and reports booking activity',async()=>{
+  const {db,request}=fixture();
+  const id=db.prepare(`SELECT public_id FROM provider_profiles WHERE firebase_uid='bay'`).get().public_id;
+  await request(`/v1/me/follows/${id}`,{method:'PUT',user:'buyer'});
+  await request(`/v1/me/follows/${id}`,{method:'PUT',user:'buyer'});
+  const providerInbox=await request('/v1/me/notifications',{user:'bay'});
+  assert.equal(providerInbox.body.unreadCount,1);
+  assert.equal(providerInbox.body.notifications[0].kind,'follow');
+  assert.equal(providerInbox.body.notifications[0].target_path,`/people/${id}`);
+  assert.equal((await request('/v1/me/notifications',{user:'lag'})).body.unreadCount,0);
+  const notificationId=providerInbox.body.notifications[0].id;
+  assert.equal((await request(`/v1/me/notifications/${notificationId}/read`,{method:'POST',user:'lag'})).status,404);
+  assert.equal((await request(`/v1/me/notifications/${notificationId}/read`,{method:'POST',user:'bay'})).body.read,true);
+  assert.equal((await request('/v1/me/notifications',{user:'bay'})).body.unreadCount,0);
+  db.prepare(`INSERT INTO service_bookings(id,buyer_uid,provider_uid,gig_id,request_id,service_title,service_category,price_kobo,delivery_days,brief,last_actor_uid)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run('booking1','buyer','bay','gig-bay','req1','Logo design','Design & Creative',500000,3,'I need a reliable student business logo','buyer');
+  assert.equal((await request('/v1/me/notifications',{user:'bay'})).body.unreadCount,1);
+  db.prepare("UPDATE service_bookings SET status='accepted',last_actor_uid='bay' WHERE id='booking1'").run();
+  assert.equal((await request('/v1/me/notifications',{user:'buyer'})).body.notifications[0].kind,'booking_accepted');
+  const all=await request('/v1/me/notifications/read-all',{method:'POST',user:'bay'});
+  assert.equal(all.body.changed,1);
+  db.prepare("UPDATE provider_applications SET status='pending' WHERE id='app-bay'").run();
+  db.prepare(`UPDATE provider_applications SET status='changes_requested',reviewed_by_uid='buyer',review_note='Upload a clearer ID photo.' WHERE id='app-bay'`).run();
+  assert.equal((await request('/v1/me/notifications',{user:'bay'})).body.notifications[0].kind,'provider_review');
+  db.close();
+});
+
+test('Phase G Worker routes and CORS explicitly allow follow write methods',()=>{
+  const code=readFileSync(new URL('../src/index.ts',import.meta.url),'utf8');
+  assert.match(code,/Access-Control-Allow-Methods[^\n]*PUT, DELETE/);
+  assert.match(code,/\['GET', 'POST', 'PATCH', 'PUT', 'DELETE'\]/);
 });

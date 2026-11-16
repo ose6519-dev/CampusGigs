@@ -47,6 +47,8 @@ export type PublicProvider = {public_id:string;display_name:string;avatar_url:st
 export type PublicProviderPage = {providers:PublicProvider[]};
 export type PublicProviderDetail = {provider:PublicProvider;gigs:PublicGig[]};
 export type FollowingResponse = {following:Pick<PublicProvider,'public_id'|'display_name'|'avatar_url'|'campus'|'state_name'|'online'>[]};
+export type InboxNotification = {id:string;kind:'follow'|'booking_requested'|'booking_accepted'|'booking_declined'|'booking_cancelled'|'provider_review';title:string;body:string;target_path:string;is_read:0|1;created_at:string};
+export type NotificationInbox = {notifications:InboxNotification[];unreadCount:number};
 export type BookingStatus = 'requested' | 'accepted' | 'declined' | 'cancelled';
 export type BookingSummary = {
   id: string; gig_id: string; service_title: string; service_category: string;

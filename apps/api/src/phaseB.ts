@@ -114,6 +114,7 @@ export async function phaseB(context: Context): Promise<Response | null> {
 
   if (path === '/v1/public/providers' && request.method === 'GET') {
     const filters = parseScope(url.searchParams, ['q','state','institutionId','limit']);
+    const queryPattern=filters.q?`%${filters.q.trim().split(/\s+/).map(word=>likeTerm(word).slice(1,-1)).join('%')}%`:'%';
     if (filters.institutionId) {
       const institution = await findInstitution(env, filters.institutionId);
       if (filters.state && institution.state_name !== filters.state) throw new InputError('Institution is outside the selected state');
@@ -125,10 +126,13 @@ export async function phaseB(context: Context): Promise<Response | null> {
       FROM provider_profiles pp JOIN profiles p ON p.firebase_uid=pp.firebase_uid
       WHERE pp.provider_status='active' AND pp.public_id IS NOT NULL AND p.account_status='active'
         AND (?='' OR p.state_name=?) AND (?='' OR p.institution_id=?)
-        AND (?='' OR p.display_name LIKE ? ESCAPE '\\' OR p.campus LIKE ? ESCAPE '\\' OR p.bio LIKE ? ESCAPE '\\')
+        AND (?='' OR p.display_name LIKE ? ESCAPE '\\' OR p.campus LIKE ? ESCAPE '\\' OR p.bio LIKE ? ESCAPE '\\'
+          OR EXISTS(SELECT 1 FROM provider_applications a WHERE a.firebase_uid=pp.firebase_uid AND a.skill_categories LIKE ? ESCAPE '\\')
+          OR EXISTS(SELECT 1 FROM gigs search_gig WHERE search_gig.provider_uid=pp.firebase_uid
+            AND search_gig.status='active' AND (search_gig.category LIKE ? ESCAPE '\\' OR search_gig.title LIKE ? ESCAPE '\\')))
       ORDER BY online DESC, gig_count DESC,pp.verified_at DESC LIMIT ?`;
     const results = await env.DB.prepare(query).bind(filters.state,filters.state,filters.institutionId,filters.institutionId,
-      filters.q,likeTerm(filters.q),likeTerm(filters.q),likeTerm(filters.q),filters.limit).all();
+      filters.q,queryPattern,queryPattern,queryPattern,queryPattern,queryPattern,queryPattern,filters.limit).all();
     return json({ providers: results.results || [] });
   }
 
@@ -288,6 +292,13 @@ export async function phaseB(context: Context): Promise<Response | null> {
     const owner = mustHaveVerifiedEmail(user);
     await context.rateLimit(env, owner.uid, 'provider-apply', 5);
     const value = parseProviderApplication(await context.readJson(request));
+    if(value.locationKind==='campus'){
+      const place=await env.DB.prepare('SELECT institution_id FROM profiles WHERE firebase_uid=?')
+        .bind(owner.uid).first<{institution_id:string|null}>();
+      if(!place?.institution_id)throw new InputError('Choose your recognised institution in Profile → Campus & privacy first, or select City');
+      const school=await findInstitution(env,place.institution_id);
+      value.locationName=school.name;
+    }
     if (!value.evidenceKey.startsWith(`provider-evidence/${owner.uid}/`)) throw new InputError('Upload your own ID image first');
     const object = await env.MEDIA.head(value.evidenceKey);
     if (!object || object.customMetadata?.ownerUid !== owner.uid) throw new InputError('Uploaded ID image was not found');
@@ -331,6 +342,10 @@ export async function phaseB(context: Context): Promise<Response | null> {
     `).bind(owner.uid).first();
     if (!verified) return json({ error: 'Your provider application must be approved before publishing' }, 403);
     const value = parseGig(await context.readJson(request));
+    const home=await env.DB.prepare('SELECT state_name,institution_id FROM profiles WHERE firebase_uid=?')
+      .bind(owner.uid).first<{state_name:string;institution_id:string|null}>();
+    if(!home?.state_name||value.state!==home.state_name)throw new InputError('Gig state must match your confirmed profile state');
+    if(value.institutionId&&value.institutionId!==home.institution_id)throw new InputError('Publish for your confirmed institution or choose state-wide service');
     if (value.institutionId) {
       const institution = await findInstitution(env,value.institutionId);
       if (institution.state_name!==value.state) throw new InputError('This institution is not in the chosen state');

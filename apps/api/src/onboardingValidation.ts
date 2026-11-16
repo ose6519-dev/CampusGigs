@@ -1,10 +1,8 @@
 import { InputError } from './validation.ts';
 import { institutionIdPattern, nigeriaStates } from './institutions.ts';
+import { skillCategories } from './providerValidation.ts';
 
-export const interestOptions = [
-  'Design & Creative', 'Tech & Digital', 'Media & Editing', 'Personal Services',
-  'Tutoring & Skills', 'Typing & Proofreading', 'Events & Lifestyle', 'Business Support',
-] as const;
+export const interestOptions = skillCategories;
 
 const kinds = ['buyer','provider','both'] as const;
 const ages = ['under_18','18_24','25_34','35_44','45_plus'] as const;
