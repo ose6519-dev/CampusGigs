@@ -14,7 +14,7 @@ const sampleGig = {
   title: 'Brand identity and logo design',
   description: 'I will deliver a distinctive logo and brand identity kit with source files.',
   category: skillCategories[0], priceKobo: 500000,
-  deliveryDays: 3, locationType: 'online', locationName: 'Yenagoa', paymentOption: 'preview',
+  deliveryDays: 3, locationType: 'online', locationName: 'Yenagoa', state:'Bayelsa', institutionId:'', paymentOption: 'preview',
 };
 
 test('provider applications validate category limits, ID evidence and location', () => {
@@ -32,6 +32,7 @@ test('gigs require integer kobo and reject prohibited completion services', () =
   assert.throws(()=>parseGig({...sampleGig, priceKobo:5000}), /Price/);
   assert.throws(()=>parseGig({...sampleGig, paymentOption:'transfer_direct'}), /payment option/);
   assert.throws(()=>parseGig({...sampleGig, deliveryDays:0}), /Delivery time/);
+  assert.throws(()=>parseGig({...sampleGig, state:'Mars'}), /state/);
   assert.throws(()=>parseGig({...sampleGig, title:'I will complete your assignment'}), /assignment completion/);
   assert.doesNotThrow(()=>parseGig({...sampleGig, category:'Typing & Proofreading',title:'Professional proofreading services'}));
 });

@@ -1,4 +1,5 @@
 import { InputError } from './validation.ts';
+import { institutionIdPattern, nigeriaStates } from './institutions.ts';
 
 export const skillCategories = [
   'Design & Creative', 'Tech & Digital', 'Media & Editing', 'Personal Services',
@@ -42,7 +43,7 @@ export function parseProviderApplication(value: unknown) {
 }
 
 export function parseGig(value: unknown) {
-  const record = recordOf(value, ['title', 'description', 'category', 'priceKobo', 'deliveryDays', 'locationType', 'locationName', 'paymentOption']);
+  const record = recordOf(value, ['title', 'description', 'category', 'priceKobo', 'deliveryDays', 'locationType', 'locationName', 'paymentOption','state','institutionId']);
   if (!skillCategories.includes(record.category as typeof skillCategories[number])) throw new InputError('Invalid category');
   if (!Number.isSafeInteger(record.priceKobo) || (record.priceKobo as number) < 10000 || (record.priceKobo as number) > 1000000000) throw new InputError('Price must be between ₦100 and ₦10,000,000');
   if (!Number.isSafeInteger(record.deliveryDays) || (record.deliveryDays as number) < 1 || (record.deliveryDays as number) > 90) throw new InputError('Delivery time must be 1–90 days');
@@ -51,10 +52,15 @@ export function parseGig(value: unknown) {
   const title = stringField(record, 'title', 8, 100);
   const description = stringField(record, 'description', 40, 3000);
   const locationName = stringField(record, 'locationName', 3, 100);
+  const state = stringField(record, 'state', 2, 40);
+  if (!nigeriaStates.includes(state as typeof nigeriaStates[number])) throw new InputError('Choose a Nigerian state for this gig');
+  const institutionId = record.institutionId === '' || record.institutionId === undefined ? '' : stringField(record,'institutionId',20,20);
+  if (institutionId && !institutionIdPattern.test(institutionId)) throw new InputError('Choose your institution from the directory');
   // Academic integrity: students can book tutorials, formatting and proofreading, not ghostwritten submissions.
   const prohibited = /\b(write|complete|do)\b.{0,35}\b(assignment|exam|thesis|dissertation|coursework)\b|\b(assignment|exam|thesis|dissertation|coursework)\b.{0,35}\b(for you|on your behalf)\b/i;
   if (prohibited.test(`${title} ${description}`)) throw new InputError('Full academic assignment completion is not allowed. Offer tutoring or proofreading instead.');
-  return { title, description, locationName, category: record.category as string, priceKobo: record.priceKobo as number, deliveryDays: record.deliveryDays as number, locationType: record.locationType as string, paymentOption: record.paymentOption as string };
+  return { title, description, locationName, state, institutionId,
+    category: record.category as string, priceKobo: record.priceKobo as number, deliveryDays: record.deliveryDays as number, locationType: record.locationType as string, paymentOption: record.paymentOption as string };
 }
 
 export function parseReview(value: unknown) {

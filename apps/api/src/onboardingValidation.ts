@@ -1,4 +1,5 @@
 import { InputError } from './validation.ts';
+import { institutionIdPattern, nigeriaStates } from './institutions.ts';
 
 export const interestOptions = [
   'Design & Creative', 'Tech & Digital', 'Media & Editing', 'Personal Services',
@@ -12,7 +13,7 @@ const statuses = ['student','non_student'] as const;
 export function parseOnboarding(body: unknown) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new InputError('Invalid setup information');
   const record = body as Record<string, unknown>;
-  const fields = ['userKind','ageRange','studentStatus','interests','school','city','displayName'];
+  const fields = ['userKind','ageRange','studentStatus','interests','school','city','displayName','state','institutionId'];
   if (Object.keys(record).some(key=>!fields.includes(key))) throw new InputError('Unknown setup field');
   if (!kinds.includes(record.userKind as typeof kinds[number])) throw new InputError('Choose how you want to use CampusGigs');
   if (!ages.includes(record.ageRange as typeof ages[number])) throw new InputError('Select your age group');
@@ -30,9 +31,13 @@ export function parseOnboarding(body: unknown) {
   }
   const studentStatus=record.studentStatus as typeof statuses[number];
   const school=clean('school',100,studentStatus==='student'?2:0);
+  const state=clean('state',40,2);
+  if(!nigeriaStates.includes(state as typeof nigeriaStates[number])) throw new InputError('Choose your Nigerian state');
+  const institutionId=clean('institutionId',20,studentStatus==='student'?20:0);
+  if(institutionId&&!institutionIdPattern.test(institutionId)) throw new InputError('Choose a recognised school from the list');
   return {
     userKind:record.userKind as typeof kinds[number], ageRange:record.ageRange as typeof ages[number],
-    studentStatus, interests:record.interests as string[],school,
+    studentStatus, interests:record.interests as string[],school,state,institutionId,
     city:clean('city',100,2),displayName:clean('displayName',60,2),
   };
 }

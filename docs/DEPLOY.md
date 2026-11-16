@@ -1,4 +1,4 @@
-# CampusGigs Phases A–D — deploy and verify
+# CampusGigs Phases A–F — deploy and verify
 
 This project uses the new Cloudflare `cf` CLI and `cloudflare.config.ts` for the API, and Cloudflare Pages for the React frontend. **Do not change any existing CampSell project.**
 
@@ -24,7 +24,7 @@ The above D1 and R2 already exist under the chosen account; **do not recreate or
 
 `apps/api/cloudflare.config.ts` already binds these CampusGigs resources and uses Firebase project ID `campsell-ea245` and origin `https://campusgigs-97y.pages.dev`. Keep `DB`, `MEDIA`, `FIREBASE_PROJECT_ID`, `WEB_ORIGINS` unchanged.
 
-Migration `apps/api/migrations/0001_profiles.sql` initializes profiles, roles and rate limits. Migration `0002_providers_gigs.sql` adds provider applications, approvals, badges, gigs, images and admin events. Phase D migration `0003_bookings.sql` adds service requests and booking-event audit trails. Migration `0004_member_onboarding.sql` adds first-time profile preferences and marks existing profiles as already onboarded. Apply migrations in number order **only** to the independent CampusGigs D1 database before updating the Worker; never touch CampSell D1.
+Migration `apps/api/migrations/0001_profiles.sql` initializes profiles, roles and rate limits. Migration `0002_providers_gigs.sql` adds provider applications, approvals, badges, gigs, images and admin events. Phase D migration `0003_bookings.sql` adds service requests and booking-event audit trails. Migration `0004_member_onboarding.sql` adds first-time profile preferences and marks existing profiles as already onboarded. Migration `0005_campus_social.sql` adds strict state/institution keys, opt-in presence and provider follows; `0006_institution_directory.sql` seeds a snapshot of 763 recognised institutions. Apply migrations **in number order after taking a D1 export** and only to independent CampusGigs D1 before updating the Worker; never touch CampSell D1.
 
 ## Firebase login setup
 
@@ -68,6 +68,8 @@ The Worker is already deployed. Do not use `cf deploy --temporary-account`, whic
 - Paystack checkout, seller payouts and FacePay remain disabled until financial/security readiness is confirmed.
 - Login on CampSell remains unchanged; no CampSell database or Worker is read or written.
 - The CampusGigs website links to CampSell; reciprocal CampSell link will be prepared separately, with explicit approval before any CampSell change.
+- Phase F: verify state and exact institution search, NDU/UNILAG aliases, warning before cross-campus browsing, `/people` public profiles, follow/unfollow, opt-in green online dots, and absence of private email/UIDs in public responses.
+- State/institution selection is a manually confirmed member preference, **not a device GPS fix or a formal campus enrolment verification**. Existing old gigs without a state tag remain visible nationwide but do not appear within a strict state/school filter until re-published with location tags.
 
 **Payment safety:** D1 accounting does not itself provide regulated escrow custody. Verify Paystack Starter account settlement/manual transfer capabilities and the legal basis for holding customer funds before enabling checkout.
 

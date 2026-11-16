@@ -18,6 +18,9 @@ import { BrowseGigs, FeaturedGigs } from './BrowseGigs';
 import { GigDetail } from './GigDetail';
 import { BookingWorkspace } from './BookingWorkspace';
 import { WelcomeSetup } from './WelcomeSetup';
+import { PeopleDirectory } from './PeopleDirectory';
+import { ProviderPublicProfile, FollowingPanel } from './ProviderPublicProfile';
+import { LocationSettingsPanel } from './LocationSettingsPanel';
 
 function authMessage(error:unknown):string {
   const code=(error as {code?:string})?.code;
@@ -37,12 +40,15 @@ function authMessage(error:unknown):string {
   }
 }
 
-type View = 'explore' | 'categories' | 'detail' | 'bookings' | 'provider' | 'profile';
+type View = 'explore' | 'categories' | 'detail' | 'bookings' | 'provider' | 'profile' | 'people' | 'person';
 
 function routeFromLocation(): { view: View; gigId: string; category: string } {
   const path = window.location.pathname;
   const gigId = path.match(/^\/gigs\/([0-9a-f-]{36})\/?$/i)?.[1] || '';
   if (gigId) return { view: 'detail', gigId, category: '' };
+  const personId=path.match(/^\/people\/([0-9a-f]{32})\/?$/i)?.[1];
+  if(personId)return {view:'person',gigId:personId,category:''};
+  if(path==='/people'||path==='/people/')return {view:'people',gigId:'',category:''};
   if (path === '/gigs' || path === '/gigs/') return { view: 'categories', gigId: '', category: new URLSearchParams(window.location.search).get('category') || '' };
   if (path === '/bookings' || path === '/bookings/') return { view: 'bookings', gigId: '', category: '' };
   if (path === '/provide') return { view: 'provider', gigId: '', category: '' };
@@ -132,6 +138,14 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  useEffect(()=>{
+    if(!user?.emailVerified||!me?.profile.show_online)return;
+    const heartbeat=()=>{if(document.visibilityState==='visible')void apiRequest(user,'/v1/me/presence',{method:'POST',body:JSON.stringify({visible:true})}).catch(()=>{});};
+    heartbeat();const timer=window.setInterval(heartbeat,60_000);
+    document.addEventListener('visibilitychange',heartbeat);
+    return()=>{window.clearInterval(timer);document.removeEventListener('visibilitychange',heartbeat);};
+  },[user,me?.profile.show_online]);
+
   useEffect(() => {
     const onPopState = () => { setRoute(routeFromLocation()); setBrowseVersion((n) => n + 1); };
     window.addEventListener('popstate', onPopState);
@@ -154,7 +168,7 @@ function App() {
 
   function goTo(next: View) {
     setEditingSetup(false);
-    const path = ({ explore: '/', categories: '/gigs', bookings: '/bookings', provider: '/provide', profile: '/profile', detail: '/' } as Record<View, string>)[next];
+    const path = ({ explore: '/', categories: '/gigs', bookings: '/bookings', provider: '/provide', profile: '/profile', detail: '/', people:'/people', person:'/people' } as Record<View, string>)[next];
     window.history.pushState(null, '', path);
     setRoute({ view: next, gigId: '', category: '' });
     if (next === 'categories') setBrowseVersion((n) => n + 1);
@@ -173,6 +187,12 @@ function App() {
     window.history.pushState(null, '', `/gigs/${gigId}`);
     setRoute({ view: 'detail', gigId, category: '' });
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function openPerson(id:string){
+    window.history.pushState(null,'',`/people/${id}`);
+    setRoute({view:'person',gigId:id,category:''});
+    window.scrollTo({top:0,behavior:'smooth'});
   }
 
   async function googleLogin() {
@@ -321,20 +341,26 @@ function App() {
             <div className="category-grid">{categories.slice(0, 6).map((category) => <CategoryCard key={category.name} category={category} onClick={() => goToCategory(category.name)} />)}</div>
             <p className="phase-note">Browse verified services, find the right person and see their work.</p>
           </section>
-          <FeaturedGigs onOpen={openGig} onBrowse={() => goTo('categories')} />
+          <FeaturedGigs onOpen={openGig} onBrowse={() => goTo('categories')} profileScope={{state:me?.profile.state_name||'',institutionId:me?.profile.institution_id||'',name:me?.profile.campus||''}} />
           <section className="section-wrap connect-panel"><div><span className="eyebrow">TWO WORLDS. ONE COMMUNITY.</span><h2>Looking for products<br />instead of services?</h2><p>CampusGigs is for skills and services. Shop physical goods on CampSell.</p></div><a className="button button-gold" href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer">Explore CampSell <span>↗</span></a></section>
         </>}
 
-        {view === 'categories' && <BrowseGigs key={browseVersion} initialCategory={route.category} onOpen={openGig} />}
+        {view === 'categories' && <BrowseGigs key={browseVersion} initialCategory={route.category} onOpen={openGig} onPeople={()=>goTo('people')} profileScope={{state:me?.profile.state_name||'',institutionId:me?.profile.institution_id||'',name:me?.profile.campus||''}} />}
 
-        {view === 'detail' && <GigDetail gigId={route.gigId} user={user} onLogin={()=>setAuthOpen(true)} onBooked={()=>goTo('bookings')} onBack={() => goTo('categories')} onOpen={openGig} onNotice={setNotice} />}
+        {view === 'people' && <PeopleDirectory onOpen={openPerson} onBack={()=>goTo('categories')} profileScope={{state:me?.profile.state_name||'',institutionId:me?.profile.institution_id||'',name:me?.profile.campus||''}} />}
+
+        {view === 'person' && <ProviderPublicProfile id={route.gigId} user={user} onBack={()=>goTo('people')} onOpenGig={openGig} onLogin={()=>setAuthOpen(true)} notice={setNotice} />}
+
+        {view === 'detail' && <GigDetail gigId={route.gigId} user={user} onLogin={()=>setAuthOpen(true)} onBooked={()=>goTo('bookings')} onBack={() => goTo('categories')} onOpen={openGig} onProviderOpen={openPerson} onNotice={setNotice} />}
 
         {view === 'bookings' && <BookingWorkspace user={user} onLogin={()=>setAuthOpen(true)} onBrowse={()=>goTo('categories')} notice={setNotice} />}
 
-        {view === 'provider' && <ProviderWorkspace user={user} location={me?.profile.campus || me?.profile.city || ''} notice={setNotice} onLogin={() => setAuthOpen(true)} onApproved={setProviderVerified}/>}
+        {view === 'provider' && <ProviderWorkspace user={user} location={me?.profile.campus || me?.profile.city || ''} stateName={me?.profile.state_name||''} institutionId={me?.profile.institution_id||''} notice={setNotice} onLogin={() => setAuthOpen(true)} onApproved={setProviderVerified}/>}
 
         {view === 'profile' && <section className="section-wrap page-section profile-page"><span className="eyebrow">YOUR CAMPUSGIGS SPACE</span><h1 className="page-title">Your space, <em>your way.</em></h1>{!user ? <div className="profile-empty"><div className="empty-icon">◉</div><h2>You're one step away.</h2><p>Sign in with the same Firebase account you use on CampSell.</p><button className="button button-dark" onClick={() => setAuthOpen(true)}>Sign in to continue <span>→</span></button></div> : <div className="profile-layout"><div className="profile-summary"><div className="profile-avatar">{user.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" /> : user.displayName?.slice(0, 1).toUpperCase() || 'C'}</div><h2>{me?.profile.display_name || user.displayName || 'CampusGigs member'}</h2><p>{user.email}</p><span className="status-badge">{providerVerified ? '✦ Verified gig provider' : me?.role === 'admin' ? '✦ Administrator' : '● CampusGigs member'}</span><div className="mode-box"><span>Current mode</span><strong>{me?.profile.active_mode === 'providing' ? 'Providing' : 'Buying'}</strong><button onClick={() => void switchMode()} disabled={!me}>Switch to {me?.profile.active_mode === 'providing' ? 'Buying' : 'Providing'} ↗</button><small>Provider publishing requires admin verification.</small><button className="studio-shortcut" type="button" onClick={() => goTo('provider')}>↗ Open provider studio</button></div><button className="signout-button" onClick={() => firebaseAuth && void signOut(firebaseAuth)}>Sign out ↗</button></div><form className="profile-form" onSubmit={saveProfile}><div className="form-heading"><div><span className="eyebrow">PERSONAL DETAILS</span><h2>Edit your profile</h2></div><span className="tiny-lock">Private to your account</span></div><label>Display name<input required minLength={2} maxLength={60} value={form.displayName} onChange={(event) => setForm({ ...form, displayName: event.target.value })} /></label><div className="field-row"><label>Campus / School<input maxLength={100} placeholder="e.g. Niger Delta University" value={form.campus} onChange={(event) => setForm({ ...form, campus: event.target.value })} /></label><label>City<input maxLength={100} placeholder="e.g. Yenagoa" value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} /></label></div><label>About you<textarea maxLength={480} rows={4} placeholder="A short introduction..." value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} /></label><button className="button button-dark save-button" type="submit" disabled={saving || !me}>{saving ? 'Saving…' : 'Save changes'} <span>↗</span></button></form></div>}</section>}
         {view === 'profile' && user && me && !!me.profile.onboarding_completed && <section className="section-wrap profile-personalization"><div><span className="eyebrow">PERSONALISED FOR YOU</span><h2>Your interests.</h2><p>{me.profile.student_status==='student'?`Student · ${me.profile.campus||'School not added'}`:'CampusGigs community'} · {me.profile.user_kind==='both'?'Hiring & offering':me.profile.user_kind==='provider'?'Offering skills':'Finding services'}</p><div className="profile-interests-list">{(() => {try{return (JSON.parse(me.profile.interests_json) as string[]).map(item=><span key={item}>{item}</span>);}catch{return [];}})()}</div></div><button type="button" className="button button-ghost" onClick={()=>setEditingSetup(true)}>Edit interests <span>↗</span></button></section>}
+        {view==='profile' && user && me && !!me.profile.onboarding_completed && <LocationSettingsPanel user={user} profile={me.profile} onSaved={()=>refreshProfile(user)} notice={setNotice}/>}
+        {view==='profile' && user && me && !!me.profile.onboarding_completed && <FollowingPanel user={user} onOpen={openPerson} onBrowse={()=>goTo('people')}/>}
       </main>
 
       <footer className="site-footer"><div className="section-wrap footer-content"><span className="footer-brand">Campus<span>Gigs.</span></span><p>Built for talent. Made for Nigeria.</p><div><a href="https://campsell.pages.dev" target="_blank" rel="noopener noreferrer">CampSell ↗</a><span>© {new Date().getFullYear()} CampusGigs</span></div></div></footer>

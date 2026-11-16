@@ -1,10 +1,13 @@
 import { InputError } from './validation.ts';
 import { skillCategories } from './providerValidation.ts';
+import { institutionIdPattern, nigeriaStates } from './institutions.ts';
 
 export type PublicGigFilters = {
   q: string;
   category: string;
   location: string;
+  state: string;
+  institutionId: string;
   locationType: '' | 'online' | 'in_person' | 'both';
   sort: 'newest' | 'price_low' | 'price_high' | 'fastest';
   minPrice: number | null;
@@ -30,13 +33,17 @@ function integerInRange(input: string, key: string, max: number): number | null 
 
 export function parsePublicGigFilters(url: URL): PublicGigFilters {
   for (const key of url.searchParams.keys()) {
-    if (!['q', 'category', 'location', 'locationType', 'sort', 'minPrice', 'maxPrice', 'limit', 'offset'].includes(key)) {
+    if (!['q', 'category', 'location', 'state', 'institutionId', 'locationType', 'sort', 'minPrice', 'maxPrice', 'limit', 'offset'].includes(key)) {
       throw new InputError('Unknown gig filter');
     }
   }
   const q = single(url, 'q', 80);
   const category = single(url, 'category', 60);
   const location = single(url, 'location', 100);
+  const state = single(url, 'state', 40);
+  const institutionId = single(url, 'institutionId', 32);
+  if (state && !nigeriaStates.includes(state as typeof nigeriaStates[number])) throw new InputError('Choose a recognised state');
+  if (institutionId && !institutionIdPattern.test(institutionId)) throw new InputError('Choose a recognised campus');
   const locationType = single(url, 'locationType', 16);
   const sort = single(url, 'sort', 12) || 'newest';
   if (category && !skillCategories.includes(category as typeof skillCategories[number])) throw new InputError('Invalid category filter');
@@ -48,7 +55,7 @@ export function parsePublicGigFilters(url: URL): PublicGigFilters {
   const limit = integerInRange(single(url, 'limit', 2), 'limit', 24) ?? 12;
   const offset = integerInRange(single(url, 'offset', 7), 'offset', 1_000_000) ?? 0;
   if (limit < 1) throw new InputError('Invalid limit filter');
-  return { q, category, location, locationType: locationType as PublicGigFilters['locationType'],
+  return { q, category, location, state, institutionId, locationType: locationType as PublicGigFilters['locationType'],
     sort: sort as PublicGigFilters['sort'], minPrice, maxPrice, limit, offset };
 }
 
@@ -63,6 +70,8 @@ export function publicGigQuery(filters: PublicGigFilters): { sql: string; params
     params.push(pattern, pattern, pattern);
   }
   if (filters.category) { where.push('g.category = ?'); params.push(filters.category); }
+  if (filters.state) { where.push('g.state_name = ?'); params.push(filters.state); }
+  if (filters.institutionId) { where.push('g.institution_id = ?'); params.push(filters.institutionId); }
   if (filters.location) {
     const pattern = `%${escaped(filters.location)}%`;
     where.push(`(g.location_name LIKE ? ESCAPE '\\' OR p.campus LIKE ? ESCAPE '\\' OR p.city LIKE ? ESCAPE '\\')`);

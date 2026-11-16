@@ -5,6 +5,7 @@ import type { ProfileRecord } from './types';
 import { phaseB } from './phaseB';
 import { bookings, adminBookings } from './bookings';
 import { parseOnboarding } from './onboardingValidation';
+import { findInstitution, institutionIdPattern, nigeriaStates } from './institutions.ts';
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
@@ -174,14 +175,34 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (!user.emailVerified) return json({ error: 'Verify your email before completing your setup' },403);
     await checkWriteRateLimit(env,user.uid,'onboarding',6);
     const value=parseOnboarding(await readBody(request));
+    const institution=value.institutionId?await findInstitution(env,value.institutionId):null;
+    if (institution && institution.state_name!==value.state) return json({error:'That school is not in the selected state'},400);
     await env.DB.prepare(`
       UPDATE profiles SET onboarding_completed=1,user_kind=?,age_range=?,student_status=?,interests_json=?,
-        display_name=?,campus=?,city=?,active_mode=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        display_name=?,campus=?,city=?,state_name=?,institution_id=?,active_mode=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
       WHERE firebase_uid=? AND account_status='active'
     `).bind(value.userKind,value.ageRange,value.studentStatus,JSON.stringify(value.interests),value.displayName,
-      value.studentStatus==='student'?value.school:'',value.city,
+      institution?.name||'',value.city,value.state,institution?.id||null,
       value.userKind==='provider'?'providing':'buying',user.uid).run();
     return json({completed:true});
+  }
+
+  if (path === '/v1/me/location' && request.method === 'PATCH') {
+    if (!user.emailVerified) return json({error:'Verify your email first'},403);
+    await checkWriteRateLimit(env,user.uid,'location',6);
+    const body=await readBody(request);
+    if(!body||typeof body!=='object'||Array.isArray(body)) throw new InputError('Select a location');
+    const value=body as Record<string,unknown>;
+    if(Object.keys(value).some(k=>!['state','institutionId'].includes(k))) throw new InputError('Unknown location field');
+    if(typeof value.state!=='string'||!nigeriaStates.includes(value.state as typeof nigeriaStates[number])) throw new InputError('Choose your state');
+    const id=value.institutionId||'';
+    if(typeof id!=='string'||(id&&!institutionIdPattern.test(id))) throw new InputError('Select a recognised institution');
+    const institution=id?await findInstitution(env,id):null;
+    if(institution&&institution.state_name!==value.state) throw new InputError('Institution does not belong to that state');
+    await env.DB.prepare(`UPDATE profiles SET state_name=?,institution_id=?,campus=?,
+      updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE firebase_uid=?`)
+      .bind(value.state,institution?.id||null,institution?.name||'',user.uid).run();
+    return json({saved:true,state:value.state,institution:institution?.name||''});
   }
 
   if (path === '/v1/me' && request.method === 'PATCH') {

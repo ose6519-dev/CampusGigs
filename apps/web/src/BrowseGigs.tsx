@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { gigImageUrl, publicRequest, type PublicGig, type PublicGigPage } from './api';
+import { InstitutionPicker } from './InstitutionPicker';
 
 export const gigCategories = [
   'Design & Creative', 'Tech & Digital', 'Media & Editing', 'Personal Services',
@@ -21,7 +22,7 @@ export function GigCard({ gig, onOpen }: { gig: PublicGig; onOpen: (id: string) 
       <span className="discovery-category">{gig.category}</span>
     </div>
     <div className="discovery-info">
-      <span className="discovery-provider">{gig.provider_name || 'CampusGigs provider'} <span className="verified-mini" title="Admin-verified provider" aria-label="Verified provider">✓</span></span>
+      <span className="discovery-provider">{gig.provider_name || 'CampusGigs provider'} <span className="verified-mini" title="Admin-verified provider" aria-label="Verified provider">✓</span>{gig.provider_online===1&&<i className="online-dot" title="Provider online" aria-label="Provider online"/>}</span>
       <strong className="discovery-title">{gig.title}</strong>
       <div className="discovery-secondary"><span>◷ {gig.delivery_days} {gig.delivery_days === 1 ? 'day' : 'days'}</span><span>◎ {gig.location_type === 'online' ? 'Online' : gig.location_name || 'Local'}</span></div>
       <div className="discovery-bottom"><span><small>FROM</small><strong>{naira(gig.price_kobo)}</strong></span><span className="discovery-arrow" aria-hidden="true">↗</span></div>
@@ -29,28 +30,37 @@ export function GigCard({ gig, onOpen }: { gig: PublicGig; onOpen: (id: string) 
   </button>;
 }
 
-export function FeaturedGigs({ onOpen, onBrowse }: { onOpen: (id: string) => void; onBrowse: () => void }) {
+export function FeaturedGigs({ onOpen, onBrowse, profileScope }: { onOpen: (id: string) => void; onBrowse: () => void; profileScope?:CampusScope }) {
   const [gigs, setGigs] = useState<PublicGig[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     const controller = new AbortController();
-    void publicRequest<PublicGigPage>('/v1/public/gigs?limit=4', controller.signal)
+    const scope=initialCampusScope(profileScope);
+    const params=new URLSearchParams({limit:'4'});
+    if(scope.state)params.set('state',scope.state);
+    if(scope.institutionId)params.set('institutionId',scope.institutionId);
+    void publicRequest<PublicGigPage>(`/v1/public/gigs?${params}`, controller.signal)
       .then((data) => setGigs(data.gigs))
       .catch(() => {})
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, []);
+  }, [profileScope?.state,profileScope?.institutionId]);
   return <section className="section-wrap home-featured"><div className="section-heading"><div><span className="eyebrow">FRESH FROM THE COMMUNITY</span><h2>Discover real <i>talent.</i></h2></div><button className="text-link" onClick={onBrowse}>Browse all gigs ↗</button></div>
     {gigs.length ? <div className="discovery-grid">{gigs.map((gig) => <GigCard gig={gig} key={gig.id} onOpen={onOpen} />)}</div> : <div className="home-featured-empty"><span>✦</span><div><strong>{loading ? 'Finding great skills…' : 'New gigs are on their way.'}</strong><p>Explore skill categories while our verified providers prepare their services.</p></div><button className="button button-dark" onClick={onBrowse}>Explore gigs ↗</button></div>}
   </section>;
 }
 
-type Filters = { q: string; category: string; location: string; locationType: string; sort: string; minPrice: string; maxPrice: string };
-const startingFilters = (category: string): Filters => ({ q: '', category, location: '', locationType: '', sort: 'newest', minPrice: '', maxPrice: '' });
-function filtersFromUrl(category: string): Filters {
+type Filters = { q: string; category: string; location: string; state: string; institutionId: string; locationType: string; sort: string; minPrice: string; maxPrice: string };
+export type CampusScope = {state:string;institutionId:string;name:string};
+export function savedScope(): CampusScope {try{const data=JSON.parse(localStorage.getItem('campusgigs.scope.v1')||'{}');return {state:data.state||'',institutionId:data.institutionId||'',name:data.name||''};}catch{return {state:'',institutionId:'',name:''};}}
+const initialCampusScope = (profile?:CampusScope):CampusScope => profile?.state ? profile : savedScope();
+const startingFilters = (category: string, profile?:CampusScope): Filters => ({ q: '', category, location: '', ...((({state,institutionId})=>({state,institutionId}))(initialCampusScope(profile))), locationType: '', sort: 'newest', minPrice: '', maxPrice: '' });
+function filtersFromUrl(category: string, profile?:CampusScope): Filters {
   const params = new URLSearchParams(window.location.search);
-  const current = startingFilters(category);
+  const current = startingFilters(category,profile);
   for (const key of Object.keys(current) as (keyof Filters)[]) {
+    // A shared URL must not silently override a member's confirmed campus/state.
+    if (key==='state'||key==='institutionId') continue;
     const value = params.get(key);
     if (value !== null && value.length <= 100) current[key] = value;
   }
@@ -60,8 +70,11 @@ function filtersFromUrl(category: string): Filters {
   return current;
 }
 
-export function BrowseGigs({ initialCategory, onOpen }: { initialCategory: string; onOpen: (id: string) => void }) {
-  const [filters, setFilters] = useState<Filters>(() => filtersFromUrl(initialCategory));
+export function BrowseGigs({ initialCategory, onOpen, onPeople, profileScope }: { initialCategory: string; onOpen: (id: string) => void; onPeople: () => void; profileScope?:CampusScope }) {
+  const [filters, setFilters] = useState<Filters>(() => filtersFromUrl(initialCategory,profileScope));
+  const [campusName,setCampusName]=useState(()=>initialCampusScope(profileScope).name);
+  const [approvedScope,setApprovedScope]=useState(()=>initialCampusScope(profileScope));
+  const [pendingScope,setPendingScope]=useState<{state:string;institutionId:string;name:string}|null>(null);
   const [query, setQuery] = useState(filters.q);
   const [locationText, setLocationText] = useState(filters.location);
   const [gigs, setGigs] = useState<PublicGig[]>([]);
@@ -70,6 +83,12 @@ export function BrowseGigs({ initialCategory, onOpen }: { initialCategory: strin
   const [moreLoading, setMoreLoading] = useState(false);
   const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
+
+  useEffect(()=>{
+    if(!profileScope?.state)return;
+    setFilters(old=>({...old,state:profileScope.state,institutionId:profileScope.institutionId}));
+    setApprovedScope(profileScope);setCampusName(profileScope.name);
+  },[profileScope?.state,profileScope?.institutionId]);
 
   // Search-as-you-type with a short debounce to avoid flooding the public API.
   useEffect(() => { const timer = window.setTimeout(() => setFilters((old) => old.q === query ? old : { ...old, q: query }), 350); return () => clearTimeout(timer); }, [query]);
@@ -91,6 +110,19 @@ export function BrowseGigs({ initialCategory, onOpen }: { initialCategory: strin
 
   const setFilter = (name: keyof Filters, value: string) => setFilters((old) => ({ ...old, [name]: value }));
 
+  function applyScope(state:string,institutionId:string,name:string){
+    setFilters(old=>({...old,state,institutionId}));setCampusName(name);
+    setApprovedScope({state,institutionId,name});
+    localStorage.setItem('campusgigs.scope.v1',JSON.stringify({state,institutionId,name}));
+  }
+  function changeScope(state:string,institutionId:string,name:string,reason?:'typing'|'selection'|'clear'){
+    if(reason==='typing')return;
+    if((approvedScope.state&&approvedScope.state!==state)||(approvedScope.institutionId&&approvedScope.institutionId!==institutionId)){
+      setPendingScope({state,institutionId,name});return;
+    }
+    applyScope(state,institutionId,name);
+  }
+
   async function loadMore() {
     if (offset === null || moreLoading) return;
     const params = new URLSearchParams();
@@ -105,16 +137,21 @@ export function BrowseGigs({ initialCategory, onOpen }: { initialCategory: strin
     finally { setMoreLoading(false); }
   }
 
-  function clear() { setQuery(''); setLocationText(''); setFilters(startingFilters('')); }
+  function clear() { setQuery(''); setLocationText(''); setFilters(old=>({...startingFilters('',profileScope),state:old.state,institutionId:old.institutionId})); }
   function submit(event: FormEvent) { event.preventDefault(); setFilters((old) => ({ ...old, q: query, location: locationText })); }
 
   return <section className="section-wrap discover-page page-section">
     <div className="discover-heading"><div><span className="eyebrow">THE CAMPUSGIGS MARKETPLACE</span><h1 className="page-title">Find your <em>people.</em></h1><p>Real skills. Verified providers. Find a service that fits.</p></div><div className="discover-mark" aria-hidden="true">✦</div></div>
+    <div className="campus-scope-panel"><div className="scope-head"><span className="eyebrow">CAMPUS-FIRST DISCOVERY</span><strong>{filters.institutionId?`◎ ${campusName||'Your selected school'}`:filters.state?`◎ ${filters.state} institutions`:'◎ Choose where you study or live'}</strong><p>{filters.state?'Only services tagged to your selected state and school appear.':'Choose a state to narrow services to its institutions.'}</p></div>
+      <InstitutionPicker idPrefix="browse" state={filters.state} institutionId={filters.institutionId} institutionName={campusName} stateRequired={false} onChange={changeScope}/>
+      <button className="scope-all-button" type="button" onClick={()=>setPendingScope({state:'',institutionId:'',name:''})}>Explore other states ↗</button>
+    </div>
     <form className="discover-search" onSubmit={submit} role="search">
       <label className="discovery-search-main"><span aria-hidden="true">⌕</span><input type="search" value={query} maxLength={80} onChange={(event) => setQuery(event.target.value)} placeholder="What service do you need?" aria-label="Search gigs" /></label>
-      <label className="discovery-location"><span aria-hidden="true">◎</span><input value={locationText} onChange={(event) => setLocationText(event.target.value)} placeholder="Campus or city" maxLength={100} aria-label="Search campus or city" /></label>
+      <label className="discovery-location"><span aria-hidden="true">◎</span><input value={locationText} onChange={(event) => setLocationText(event.target.value)} placeholder="City / neighbourhood (optional)" maxLength={100} aria-label="Search city or neighbourhood" /></label>
       <button type="submit" className="button button-dark">Search <span>↗</span></button>
     </form>
+    <div className="discover-community-link"><span>Interested in a provider, not just a gig?</span><button type="button" onClick={onPeople}>Explore verified profiles ↗</button></div>
     <div className="discover-chips" aria-label="Filter gigs by skill category"><button className={!filters.category ? 'chosen' : ''} onClick={() => setFilter('category', '')}>All skills</button>{gigCategories.map((name) => <button className={filters.category === name ? 'chosen' : ''} key={name} onClick={() => setFilter('category', name)}>{name}</button>)}</div>
     <div className="discover-tools"><div className="discover-tools-heading"><strong>Explore gigs</strong><span>{loading ? 'Searching…' : `${gigs.length} ${gigs.length === 1 ? 'service' : 'services'} shown`}</span></div><div className="discover-selects">
       <label>Work type<select value={filters.locationType} onChange={(event) => setFilter('locationType', event.target.value)}><option value="">Any location</option><option value="online">Online</option><option value="in_person">In person</option><option value="both">Both options</option></select></label>
@@ -124,6 +161,7 @@ export function BrowseGigs({ initialCategory, onOpen }: { initialCategory: strin
       <button className="discover-reset" onClick={clear}>Clear filters</button></div></div>
     {error && <div className="discover-error" role="alert">{error}<button onClick={() => setVersion((n) => n + 1)}>Retry</button></div>}
     {loading ? <div className="discovery-grid" aria-label="Loading services">{Array.from({ length: 6 }, (_, i) => <div className="discovery-skeleton" key={i}><span /><span /><span /></div>)}</div> : gigs.length ? <><div className="discovery-grid">{gigs.map((gig) => <GigCard key={gig.id} gig={gig} onOpen={onOpen} />)}</div>{offset !== null && <div className="more-row"><button className="button button-ghost" onClick={() => void loadMore()} disabled={moreLoading}>{moreLoading ? 'Loading…' : 'Load more services'} <span>↓</span></button></div>}</> : !error && <div className="discover-empty"><div className="discover-empty-icon">✦</div><h2>No gigs found yet.</h2><p>{filters.category || filters.q || filters.location || filters.locationType || filters.minPrice || filters.maxPrice ? 'Try clearing your filters or exploring another skill.' : 'Verified providers are getting ready. Check back as services are published.'}</p><button className="button button-dark" onClick={clear}>View all skills <span>↗</span></button></div>}
-    <div className="discovery-footnote">Service browsing is open. Booking and payments will be added in the next phase.</div>
+    <div className="discovery-footnote">Locations are based on provider-listed areas, not real-time device tracking. Always confirm where the service will happen before booking.</div>
+    {pendingScope&&<div className="modal-layer" role="presentation"><div className="scope-warning" role="dialog" aria-modal="true" aria-labelledby="scope-warning-title"><span className="scope-warning-icon">◎</span><span className="eyebrow">LOCATION REMINDER</span><h2 id="scope-warning-title">Browsing outside your campus?</h2><p>{pendingScope.state?`You're switching to ${pendingScope.name||pendingScope.state}.`:'You are about to view services from across Nigeria.'} Travel and availability may be different. Confirm the provider's location before sending a booking request.</p><div><button type="button" className="button button-ghost" onClick={()=>setPendingScope(null)}>Stay here</button><button type="button" className="button button-dark" onClick={()=>{applyScope(pendingScope.state,pendingScope.institutionId,pendingScope.name);setPendingScope(null);}}>Continue ↗</button></div></div></div>}
   </section>;
 }

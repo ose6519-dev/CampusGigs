@@ -6,8 +6,8 @@ const categories = ['Design & Creative','Tech & Digital','Media & Editing','Pers
 const initialGig = { title:'', description:'', category:categories[0], priceNaira:'', deliveryDays:3, locationType:'online', locationName:'', paymentOption:'preview' };
 const money = (kobo: number) => `₦${(kobo / 100).toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
 
-export function ProviderWorkspace({ user, location, notice, onLogin, onApproved }: {
-  user: User | null; location: string; notice: (message: string) => void; onLogin: () => void; onApproved: (verified: boolean) => void;
+export function ProviderWorkspace({ user, location, stateName, institutionId, notice, onLogin, onApproved }: {
+  user: User | null; location: string; stateName: string; institutionId: string; notice: (message: string) => void; onLogin: () => void; onApproved: (verified: boolean) => void;
 }) {
   const [provider, setProvider] = useState<ProviderStatus | null>(null);
   const [gigs, setGigs] = useState<Gig[]>([]);
@@ -69,13 +69,14 @@ export function ProviderWorkspace({ user, location, notice, onLogin, onApproved 
   async function publishGig(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!user) return;
+    if (!stateName) {notice('Set your recognised state in My Profile before publishing a gig.');return;}
     setBusy(true);
     try {
       const created = await apiRequest<{ id: string }>(user, '/v1/provider/gigs', {
         method:'POST', body:JSON.stringify({
           title:gig.title, description:gig.description, category:gig.category, priceKobo:Math.round(Number(gig.priceNaira) * 100),
           deliveryDays:Number(gig.deliveryDays), locationType:gig.locationType,
-          locationName:gig.locationName, paymentOption:gig.paymentOption,
+          locationName:gig.locationName, state:stateName,institutionId,paymentOption:gig.paymentOption,
         }),
       });
       let failedImages = 0;
@@ -92,6 +93,7 @@ export function ProviderWorkspace({ user, location, notice, onLogin, onApproved 
   }
 
   return <section className="section-wrap page-section studio-page">
+    {user && provider?.verified && <div className="studio-location-banner"><strong>◎ Your listing area</strong><span>{stateName ? `${location || 'State-wide services'} · ${stateName}` : 'Location not set — open My Profile and select your state/institution.'}</span></div>}
     <div className="studio-heading"><div><span className="eyebrow">YOUR TALENT. YOUR NEXT OPPORTUNITY.</span><h1 className="page-title">Provider <em>studio.</em></h1><p>Apply, get verified and create your services.</p></div><div className="studio-illustration" aria-hidden="true"><span>✳</span><strong>MAKE IT<br/>HAPPEN.</strong><i>↗</i></div></div>
     {!user ? <div className="studio-empty"><div className="studio-symbol">✦</div><h2>Earn from your skills.</h2><p>Use your CampSell account to get started on CampusGigs.</p><button className="button button-dark" onClick={onLogin}>Sign in to apply <span>→</span></button></div>
       : loading && !provider ? <div className="studio-empty"><p>Loading your provider workspace…</p></div>

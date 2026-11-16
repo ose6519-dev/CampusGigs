@@ -1,7 +1,8 @@
 import type { VerifiedUser } from './auth';
-import { InputError } from './validation';
-import { parseGig, parseModeration, parseProviderApplication, parseReview } from './providerValidation';
-import { parsePublicGigFilters, publicGigQuery, publicGigWhere } from './publicGigs';
+import { InputError } from './validation.ts';
+import { parseGig, parseModeration, parseProviderApplication, parseReview } from './providerValidation.ts';
+import { parsePublicGigFilters, publicGigQuery, publicGigWhere } from './publicGigs.ts';
+import { findInstitution, likeTerm, onlineExpression, parseScope, publicProviderIdPattern } from './institutions.ts';
 
 type JsonHandler = (data: unknown, status?: number) => Response;
 type Context = {
@@ -22,7 +23,7 @@ type Application = {
 };
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const publicGigFields = 'g.id,g.title,g.description,g.category,g.price_kobo,g.delivery_days,g.location_type,g.location_name,g.payment_option,g.status,g.created_at,g.updated_at';
+const publicGigFields = 'g.id,g.title,g.description,g.category,g.price_kobo,g.delivery_days,g.location_type,g.location_name,g.payment_option,g.status,g.created_at,g.updated_at,g.state_name,g.institution_id';
 
 function needsAuth(user: VerifiedUser | null): VerifiedUser {
   if (!user) throw new InputError('Sign in to continue');
@@ -102,12 +103,66 @@ export async function phaseB(context: Context): Promise<Response | null> {
   const { request, url, env, json, user } = context;
   const path = url.pathname;
 
+  if (path === '/v1/public/institutions' && request.method === 'GET') {
+    const filters = parseScope(url.searchParams, ['q','state','limit']);
+    const query = `SELECT id,name,state_name,institution_type,aliases FROM institutions
+      WHERE (?='' OR state_name=?) AND (?='' OR name LIKE ? ESCAPE '\\' OR aliases LIKE ? ESCAPE '\\')
+      ORDER BY CASE WHEN lower(name)=lower(?) THEN 0 WHEN lower(aliases)=lower(?) THEN 1 ELSE 2 END,name LIMIT ?`;
+    const rows = await env.DB.prepare(query).bind(filters.state,filters.state,filters.q,likeTerm(filters.q),likeTerm(filters.q),filters.q,filters.q,filters.limit).all();
+    return json({ institutions: rows.results || [] });
+  }
+
+  if (path === '/v1/public/providers' && request.method === 'GET') {
+    const filters = parseScope(url.searchParams, ['q','state','institutionId','limit']);
+    if (filters.institutionId) {
+      const institution = await findInstitution(env, filters.institutionId);
+      if (filters.state && institution.state_name !== filters.state) throw new InputError('Institution is outside the selected state');
+    }
+    const query = `SELECT pp.public_id,p.display_name,p.avatar_url,p.bio,p.campus,p.city,p.state_name,p.institution_id,
+      pp.verified_at,${onlineExpression} AS online,
+      (SELECT COUNT(*) FROM provider_follows f WHERE f.provider_uid=pp.firebase_uid) AS follower_count,
+      (SELECT COUNT(*) FROM gigs g WHERE g.provider_uid=pp.firebase_uid AND g.status='active') AS gig_count
+      FROM provider_profiles pp JOIN profiles p ON p.firebase_uid=pp.firebase_uid
+      WHERE pp.provider_status='active' AND pp.public_id IS NOT NULL AND p.account_status='active'
+        AND (?='' OR p.state_name=?) AND (?='' OR p.institution_id=?)
+        AND (?='' OR p.display_name LIKE ? ESCAPE '\\' OR p.campus LIKE ? ESCAPE '\\' OR p.bio LIKE ? ESCAPE '\\')
+      ORDER BY online DESC, gig_count DESC,pp.verified_at DESC LIMIT ?`;
+    const results = await env.DB.prepare(query).bind(filters.state,filters.state,filters.institutionId,filters.institutionId,
+      filters.q,likeTerm(filters.q),likeTerm(filters.q),likeTerm(filters.q),filters.limit).all();
+    return json({ providers: results.results || [] });
+  }
+
+  const publicProvider = path.match(/^\/v1\/public\/providers\/([0-9a-f]{32})$/i);
+  if (publicProvider && request.method === 'GET') {
+    if (!publicProviderIdPattern.test(publicProvider[1])) return json({ error: 'Not found' }, 404);
+    const provider = await env.DB.prepare(`SELECT pp.firebase_uid AS private_uid,pp.public_id,p.display_name,p.avatar_url,
+      p.bio,p.campus,p.city,p.state_name,p.institution_id,pp.verified_at,${onlineExpression} AS online,
+      (SELECT COUNT(*) FROM provider_follows f WHERE f.provider_uid=pp.firebase_uid) AS follower_count
+      FROM provider_profiles pp JOIN profiles p ON p.firebase_uid=pp.firebase_uid
+      WHERE pp.public_id=? AND pp.provider_status='active' AND p.account_status='active'`).bind(publicProvider[1])
+      .first<{private_uid:string;[key:string]:unknown}>();
+    if (!provider) return json({ error: 'Provider not found' }, 404);
+    const gigs = await env.DB.prepare(`SELECT ${publicGigFields},p.display_name AS provider_name, pp.public_id AS provider_public_id,
+      p.campus AS provider_campus, pp.verified_at,
+      (SELECT id FROM gig_images WHERE gig_id=g.id ORDER BY created_at LIMIT 1) AS cover_image_id
+      FROM gigs g JOIN provider_profiles pp ON pp.firebase_uid=g.provider_uid
+      JOIN profiles p ON p.firebase_uid=g.provider_uid WHERE g.provider_uid=? AND ${publicGigWhere}
+      ORDER BY g.created_at DESC LIMIT 24`).bind(provider.private_uid).all();
+    const {private_uid: _hidden, ...publicDetails} = provider;
+    return json({ provider: publicDetails, gigs: gigs.results || [] });
+  }
+
   // Public listings do not expose private applicant IDs, email addresses or drafts.
   if (path === '/v1/public/gigs' && request.method === 'GET') {
     const filters = parsePublicGigFilters(url);
+    if (filters.institutionId) {
+      const institution = await findInstitution(env,filters.institutionId);
+      if (filters.state && institution.state_name!==filters.state) throw new InputError('Institution is outside the selected state');
+    }
     const query = publicGigQuery(filters);
     const data = await env.DB.prepare(`
-      SELECT ${publicGigFields}, p.display_name AS provider_name, pp.verified_at, p.campus AS provider_campus,
+      SELECT ${publicGigFields}, p.display_name AS provider_name, pp.public_id AS provider_public_id,
+        ${onlineExpression} AS provider_online,pp.verified_at, p.campus AS provider_campus,
         (SELECT id FROM gig_images WHERE gig_id = g.id ORDER BY created_at LIMIT 1) AS cover_image_id
       FROM gigs g JOIN provider_profiles pp ON pp.firebase_uid = g.provider_uid
       JOIN profiles p ON p.firebase_uid = g.provider_uid
@@ -123,6 +178,7 @@ export async function phaseB(context: Context): Promise<Response | null> {
     if (!uuidPattern.test(gigId)) return json({ error: 'Not found' }, 404);
     const gig = await env.DB.prepare(`
       SELECT ${publicGigFields}, p.display_name AS provider_name, p.avatar_url AS provider_avatar,
+        pp.public_id AS provider_public_id,${onlineExpression} AS provider_online,
         p.bio AS provider_bio, p.campus AS provider_campus, p.city AS provider_city, pp.verified_at
       FROM gigs g JOIN provider_profiles pp ON pp.firebase_uid = g.provider_uid
       JOIN profiles p ON p.firebase_uid = g.provider_uid
@@ -157,6 +213,53 @@ export async function phaseB(context: Context): Promise<Response | null> {
     if (!image) return json({ error: 'Not found' }, 404);
     const object = await env.MEDIA.get(image.object_key);
     return object ? imageResponse(object) : json({ error: 'Not found' }, 404);
+  }
+
+  if (path === '/v1/me/follows' && request.method === 'GET') {
+    const owner = needsAuth(user);
+    const result = await env.DB.prepare(`SELECT pp.public_id,p.display_name,p.avatar_url,p.campus,p.state_name,
+      ${onlineExpression} AS online FROM provider_follows f
+      JOIN provider_profiles pp ON pp.firebase_uid=f.provider_uid
+      JOIN profiles p ON p.firebase_uid=f.provider_uid
+      WHERE f.follower_uid=? AND pp.provider_status='active' AND p.account_status='active'
+      ORDER BY f.created_at DESC LIMIT 100`).bind(owner.uid).all();
+    return json({ following: result.results || [] });
+  }
+
+  const followMatch = path.match(/^\/v1\/me\/follows\/([0-9a-f]{32})$/i);
+  if (followMatch && (request.method === 'PUT' || request.method === 'DELETE')) {
+    const owner = mustHaveVerifiedEmail(user);
+    await context.rateLimit(env,owner.uid,'follows',20);
+    const target = await env.DB.prepare(`SELECT pp.firebase_uid FROM provider_profiles pp
+      JOIN profiles p ON p.firebase_uid=pp.firebase_uid
+      WHERE pp.public_id=? AND pp.provider_status='active' AND p.account_status='active'`)
+      .bind(followMatch[1]).first<{firebase_uid:string}>();
+    if (!target) return json({error:'Provider not found'},404);
+    if (target.firebase_uid===owner.uid) throw new InputError('You cannot follow yourself');
+    if (request.method === 'PUT') {
+      await env.DB.prepare('INSERT OR IGNORE INTO provider_follows(follower_uid,provider_uid) VALUES (?,?)')
+        .bind(owner.uid,target.firebase_uid).run();
+    } else {
+      await env.DB.prepare('DELETE FROM provider_follows WHERE follower_uid=? AND provider_uid=?')
+        .bind(owner.uid,target.firebase_uid).run();
+    }
+    const total = await env.DB.prepare('SELECT COUNT(*) AS count FROM provider_follows WHERE provider_uid=?')
+      .bind(target.firebase_uid).first<{count:number}>();
+    return json({following:request.method==='PUT',followerCount:total?.count||0});
+  }
+
+  if (path === '/v1/me/presence' && request.method === 'POST') {
+    const owner = mustHaveVerifiedEmail(user);
+    await context.rateLimit(env,owner.uid,'presence',8);
+    const body = await context.readJson(request);
+    if (!body || typeof body!=='object' || Array.isArray(body) ||
+      Object.keys(body).some(key=>key!=='visible') || typeof (body as {visible?:unknown}).visible!=='boolean')
+      throw new InputError('Choose whether to show your online status');
+    const visible = (body as {visible:boolean}).visible;
+    await env.DB.prepare(`UPDATE profiles SET show_online=?,last_seen_at=CASE WHEN ?=1 THEN
+      strftime('%Y-%m-%dT%H:%M:%fZ','now') ELSE NULL END WHERE firebase_uid=?`)
+      .bind(Number(visible),Number(visible),owner.uid).run();
+    return json({visible});
   }
 
   if (path === '/v1/provider' && request.method === 'GET') {
@@ -228,11 +331,15 @@ export async function phaseB(context: Context): Promise<Response | null> {
     `).bind(owner.uid).first();
     if (!verified) return json({ error: 'Your provider application must be approved before publishing' }, 403);
     const value = parseGig(await context.readJson(request));
+    if (value.institutionId) {
+      const institution = await findInstitution(env,value.institutionId);
+      if (institution.state_name!==value.state) throw new InputError('This institution is not in the chosen state');
+    }
     const id = crypto.randomUUID();
     await env.DB.prepare(`
-      INSERT INTO gigs (id,provider_uid,title,description,category,price_kobo,delivery_days,location_type,location_name,payment_option)
-      VALUES (?,?,?,?,?,?,?,?,?,?)
-    `).bind(id, owner.uid, value.title, value.description, value.category, value.priceKobo, value.deliveryDays, value.locationType, value.locationName, value.paymentOption).run();
+      INSERT INTO gigs (id,provider_uid,title,description,category,price_kobo,delivery_days,location_type,location_name,payment_option,state_name,institution_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+    `).bind(id, owner.uid, value.title, value.description, value.category, value.priceKobo, value.deliveryDays, value.locationType, value.locationName, value.paymentOption,value.state,value.institutionId||null).run();
     return json({ id, message: 'Gig published. Bookings and payments are not active yet.' }, 201);
   }
 
@@ -312,8 +419,8 @@ export async function phaseB(context: Context): Promise<Response | null> {
       WHERE a.id=? AND a.status=? AND a.reviewed_by_uid=?
     `).bind(crypto.randomUUID(), admin.uid, value.decision, value.note, id, value.decision, admin.uid));
     if (value.decision === 'approved') statements.push(env.DB.prepare(`
-      INSERT INTO provider_profiles (firebase_uid,application_id,approved_by_uid)
-      SELECT a.firebase_uid,a.id,? FROM provider_applications a
+      INSERT INTO provider_profiles (firebase_uid,application_id,approved_by_uid,public_id)
+      SELECT a.firebase_uid,a.id,?,lower(hex(randomblob(16))) FROM provider_applications a
       WHERE a.id=? AND a.status='approved' AND a.reviewed_by_uid=?
       ON CONFLICT(firebase_uid) DO NOTHING
     `).bind(admin.uid, id, admin.uid));

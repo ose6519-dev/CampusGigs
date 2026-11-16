@@ -1,8 +1,8 @@
-# CampusGigs — Phase D
+# CampusGigs — Phase F
 
 Standalone service-marketplace foundation for Nigeria. **Not part of CampSell.**
 
-Phases A–D include:
+Phases A–F include:
 
 - Responsive gold / black / white buyer-facing website (desktop and mobile).
 - Firebase Auth (Google + email/password), using the **same Firebase project as CampSell** when configured.
@@ -28,8 +28,13 @@ Phases A–D include:
 - Protected booking endpoints that only expose customer/provider records to the relevant Firebase UID; provider responses require active verified provider authorization.
 - Tests for search input, SQL wildcard escaping, data visibility, auth rejection and all four SQL migrations.
 - Phase D tests for booking validation, idempotence, actor authorization, status transition limits and schema audit triggers.
+- **Phase F campus discovery:** 763 Nigerian higher-education institutions in a dated directory generated from NUC, NBTE and NCCE public registers, plus common school names/acronyms. State and selected institution are matched exactly on the Worker; free-text service/city search cannot bypass the selected scope. Some institutions may be missing or have outdated naming, so the directory is not a substitute for verification.
+- Campus state/institution selection at onboarding and in Profile. Search changes to other campuses or nationwide show a visible confirmation, and returning users start with their saved profile location. This is a member-selected state, **not GPS-based state detection or proof of physical presence**.
+- Public `/people` provider directory, public provider profile pages, follower counts, idempotent authenticated follow/unfollow and a personal Following panel. Private Firebase UIDs and emails are never returned by public provider endpoints.
+- **Opt-in online indicator:** a green dot appears only when a member has enabled public status and the web app has checked in recently. Online visibility defaults to disabled; no exact GPS coordinates are exposed.
+- Phase F tests cover campus-locked queries, alias search, profile privacy, online status and follows.
 
-**Not yet implemented:** Paystack collection, escrow, payouts, FacePay identity checks, reviews, disputes and notifications. They require separate financial/security readiness. **Phase D only sends booking requests; no live payment can be charged.**
+**Not yet implemented:** Paystack collection, escrow, payouts, FacePay identity checks, reviews, disputes and notifications. They require separate financial/security readiness. **Bookings only send service requests; no live payment can be charged.**
 
 ## Structure
 
@@ -42,10 +47,13 @@ CampusGigs/
 │   │   ├── migrations/0002_providers_gigs.sql
 │   │   ├── migrations/0003_bookings.sql
 │   │   ├── migrations/0004_member_onboarding.sql
+│   │   ├── migrations/0005_campus_social.sql
+│   │   ├── migrations/0006_institution_directory.sql
 │   │   ├── src/auth.ts               # Verified Firebase JWT
 │   │   ├── src/index.ts              # Authorized API endpoints
 │   │   ├── src/phaseB.ts             # Provider workflows, R2 and gigs
 │   │   ├── src/publicGigs.ts         # Parameterized discovery query and validation
+│   │   ├── src/institutions.ts       # Strict state/school scope and online flag
 │   │   ├── src/bookings.ts           # Scoped, auditable booking requests and admin read view
 │   │   ├── src/bookingValidation.ts  # Strict request IDs and status input
 │   │   ├── src/onboardingValidation.ts # Validated member setup data
@@ -61,6 +69,10 @@ CampusGigs/
 │       ├── src/BookingWorkspace.tsx  # Buyer/provider request dashboard
 │       ├── src/WelcomeSetup.tsx      # Three-step first-time experience
 │       ├── src/phase-e.css           # Native mobile/desktop dock and auth UX
+│       ├── src/phase-f.css           # Campus, directory and social UI
+│       ├── src/InstitutionPicker.tsx # State/school autocomplete
+│       ├── src/PeopleDirectory.tsx  # Search verified provider profiles
+│       ├── src/ProviderPublicProfile.tsx # Public profile and following
 │       ├── src/firebase.ts           # Client-side Firebase login
 │       ├── src/api.ts                # Bearer token API calls
 │       └── src/styles.css
