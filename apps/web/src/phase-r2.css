@@ -84,3 +84,11 @@
  .cg-q-gallery-actions{padding:7px 10px max(9px,env(safe-area-inset-bottom))}
  .cg-reaction-options button{font-size:18px}
 }
+
+/* Outside chat the mobile tabs extend to both display edges; inside chat they stay hidden. */
+@media(max-width:850px){
+ .app-shell:not(.cg-app-chat-mode)>.mobile-nav{left:max(6px,env(safe-area-inset-left,0px))!important;
+   right:max(6px,env(safe-area-inset-right,0px))!important;width:auto!important;
+   max-width:none!important;justify-content:space-between!important}
+ .app-shell:not(.cg-app-chat-mode)>.mobile-nav button{min-width:0!important;flex:1 1 0}
+}
