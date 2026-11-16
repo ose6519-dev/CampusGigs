@@ -1,0 +1,17 @@
+name: Phase R live API smoke checks
+on:
+  push:
+    branches: [phase-r-chat-stability]
+permissions:
+  contents: read
+jobs:
+  live-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Worker health responds
+        run: curl --fail --silent --show-error --max-time 15 https://campusgigs-api.ose6519.workers.dev/health
+      - name: Protected chat routes reject anonymous visitors
+        run: |
+          status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 https://campusgigs-api.ose6519.workers.dev/v1/me/chats)
+          test "$status" = '401'
