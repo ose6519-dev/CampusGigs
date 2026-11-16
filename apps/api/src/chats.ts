@@ -161,7 +161,7 @@ export async function chats(context:Context):Promise<Response|null>{
       env.DB.prepare('SELECT wallpaper,muted FROM chat_preferences WHERE booking_id=? AND user_uid=?').bind(id,user.uid).first(),
       env.DB.prepare('SELECT last_read_at FROM chat_receipts WHERE booking_id=? AND user_uid=?').bind(id,user.uid).first(),
       env.DB.prepare('SELECT last_read_at FROM chat_receipts WHERE booking_id=? AND user_uid=?').bind(id,otherUid).first(),
-      env.DB.prepare('SELECT expires_at FROM chat_typing WHERE booking_id=? AND user_uid=?').bind(id,otherUid).first<{expires_at:string}>(),
+      env.DB.prepare('SELECT expires_at,activity FROM chat_typing WHERE booking_id=? AND user_uid=?').bind(id,otherUid).first<{expires_at:string;activity:'typing'|'recording'}>(),
       env.DB.prepare('SELECT enabled_at FROM chat_security WHERE booking_id=?').bind(id).first<{enabled_at:string}>(),
     ]);
     return json({booking:{bookingId:id,serviceTitle:booking.service_title,status:booking.status,
@@ -170,7 +170,8 @@ export async function chats(context:Context):Promise<Response|null>{
       otherPublicId:booking.other_public_id,otherKind:booking.other_kind,otherOnline:booking.other_online},
       preferences:preferences||{wallpaper:'warm',muted:0},lastReadAt:(receipt as {last_read_at?:string}|null)?.last_read_at||null,
       otherReadAt:(otherReceipt as {last_read_at?:string}|null)?.last_read_at||null,
-      otherTyping:!!typing&&typing.expires_at>now(),secure:!!security,secureSince:security?.enabled_at||null});
+      otherTyping:!!typing&&typing.expires_at>now(),otherActivity:typing&&typing.expires_at>now()?typing.activity:null,
+      secure:!!security,secureSince:security?.enabled_at||null});
   }
 
   if(action==='messages'&&request.method==='GET'){
@@ -226,8 +227,8 @@ export async function chats(context:Context):Promise<Response|null>{
         .bind(id,after,anchor?.created_at||'',anchor?.created_at||'',after).all(),
       env.DB.prepare('SELECT last_read_at FROM chat_receipts WHERE booking_id=? AND user_uid=?')
         .bind(id,otherUid).first<{last_read_at:string}>(),
-      env.DB.prepare('SELECT expires_at FROM chat_typing WHERE booking_id=? AND user_uid=?')
-        .bind(id,otherUid).first<{expires_at:string}>(),
+      env.DB.prepare('SELECT expires_at,activity FROM chat_typing WHERE booking_id=? AND user_uid=?')
+        .bind(id,otherUid).first<{expires_at:string;activity:'typing'|'recording'}>(),
     ]);
     const items=rows.results||[],visible=items.slice(0,60);
     const ids=visible.map(item=>String(item.id));
@@ -236,7 +237,8 @@ export async function chats(context:Context):Promise<Response|null>{
     return json({messages:visible.map(item=>({...item,
       reactions:(reactions?.results||[]).filter(reaction=>reaction.message_id===item.id)})),
       hasMore:items.length>60,otherReadAt:receipt?.last_read_at||null,
-      otherTyping:!!typing&&typing.expires_at>now()});
+      otherTyping:!!typing&&typing.expires_at>now(),
+      otherActivity:typing&&typing.expires_at>now()?typing.activity:null});
   }
 
   if(action==='messages'&&request.method==='POST'){
@@ -298,12 +300,15 @@ export async function chats(context:Context):Promise<Response|null>{
 
   if(action==='typing'&&request.method==='POST'){
     await context.rateLimit(env,user.uid,'chat-typing',35);
-    const data=asObject(await context.readJson(request));noExtra(data,['active']);
+    const data=asObject(await context.readJson(request));noExtra(data,['active','activity']);
     if(typeof data.active!=='boolean')throw new InputError('Invalid typing status');
+    if(data.activity!==undefined&&data.activity!=='typing'&&data.activity!=='recording')
+      throw new InputError('Invalid chat activity');
+    const activity=data.active?(data.activity||'typing'):'typing';
     const expiry=new Date(Date.now()+(data.active?8000:0)).toISOString();
-    await env.DB.prepare(`INSERT INTO chat_typing(booking_id,user_uid,expires_at) VALUES (?,?,?)
-      ON CONFLICT(booking_id,user_uid) DO UPDATE SET expires_at=excluded.expires_at`)
-      .bind(id,user.uid,expiry).run();
+    await env.DB.prepare(`INSERT INTO chat_typing(booking_id,user_uid,expires_at,activity) VALUES (?,?,?,?)
+      ON CONFLICT(booking_id,user_uid) DO UPDATE SET expires_at=excluded.expires_at,activity=excluded.activity`)
+      .bind(id,user.uid,expiry,activity).run();
     return json({ok:true});
   }
 
