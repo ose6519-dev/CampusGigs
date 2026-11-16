@@ -4,7 +4,7 @@ on:
     branches: [phase-r-chat-stability]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   build-api:
     runs-on: ubuntu-latest
@@ -20,3 +20,14 @@ jobs:
         run: npm run build -w @campusgigs/api
       - name: Inspect generated bundle paths
         run: find apps/api -maxdepth 5 -type f -not -path '*/node_modules/*' -not -path '*/.git/*' | grep -E '(dist|\.cloudflare|\.wrangler)' | head -40
+      - name: Preserve versioned Worker bundle on feature branch
+        run: |
+          mkdir -p release
+          cp apps/api/.cloudflare/output/v0/workers/default/bundle/index.js release/phase-r-worker.js
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f release/phase-r-worker.js
+          if ! git diff --cached --quiet; then
+            git commit -m 'build(phase-r): preserve audited Worker bundle [skip ci]'
+            git push origin HEAD:phase-r-chat-stability
+          fi
