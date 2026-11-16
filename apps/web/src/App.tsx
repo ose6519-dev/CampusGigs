@@ -343,7 +343,7 @@ function App() {
 
         {view === 'categories' && <BrowseGigs key={browseVersion} initialCategory={route.category} onOpen={openGig} onPeople={()=>goTo('people')} profileScope={{state:me?.profile.state_name||'',institutionId:me?.profile.institution_id||'',name:me?.profile.campus||''}} />}
 
-        {view === 'people' && <PeopleDirectory onOpen={openPerson} onBack={()=>goTo('categories')} profileScope={{state:me?.profile.state_name||'',institutionId:me?.profile.institution_id||'',name:me?.profile.campus||''}} />}
+        {view === 'people' && <PeopleDirectory onOpen={openPerson} onBack={()=>goTo('categories')} user={user} onLogin={()=>setAuthOpen(true)} notice={setNotice} profileScope={{state:me?.profile.state_name||'',institutionId:me?.profile.institution_id||'',name:me?.profile.campus||''}} />}
 
         {view === 'person' && <ProviderPublicProfile id={route.gigId} user={user} onBack={()=>goTo('people')} onOpenGig={openGig} onLogin={()=>setAuthOpen(true)} notice={setNotice} />}
 

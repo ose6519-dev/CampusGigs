@@ -1,6 +1,7 @@
 import { InputError } from './validation.ts';
 import { institutionIdPattern, nigeriaStates } from './institutions.ts';
 import { skillCategories } from './providerValidation.ts';
+import { parseAcademics } from './academicValidation.ts';
 
 export const interestOptions = skillCategories;
 
@@ -11,7 +12,7 @@ const statuses = ['student','non_student'] as const;
 export function parseOnboarding(body: unknown) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new InputError('Invalid setup information');
   const record = body as Record<string, unknown>;
-  const fields = ['userKind','ageRange','studentStatus','interests','school','city','displayName','state','institutionId'];
+  const fields = ['userKind','ageRange','studentStatus','interests','school','city','displayName','state','institutionId','faculty','department'];
   if (Object.keys(record).some(key=>!fields.includes(key))) throw new InputError('Unknown setup field');
   if (!kinds.includes(record.userKind as typeof kinds[number])) throw new InputError('Choose how you want to use CampusGigs');
   if (!ages.includes(record.ageRange as typeof ages[number])) throw new InputError('Select your age group');
@@ -33,9 +34,12 @@ export function parseOnboarding(body: unknown) {
   if(!nigeriaStates.includes(state as typeof nigeriaStates[number])) throw new InputError('Choose your Nigerian state');
   const institutionId=clean('institutionId',20,studentStatus==='student'?20:0);
   if(institutionId&&!institutionIdPattern.test(institutionId)) throw new InputError('Choose a recognised school from the list');
+  const academics = parseAcademics(record.faculty ?? '', record.department ?? '');
+  if (studentStatus === 'non_student' && (academics.faculty || academics.department)) throw new InputError('Academic details are for students');
   return {
     userKind:record.userKind as typeof kinds[number], ageRange:record.ageRange as typeof ages[number],
     studentStatus, interests:record.interests as string[],school,state,institutionId,
+    ...academics,
     city:clean('city',100,2),displayName:clean('displayName',60,2),
   };
 }

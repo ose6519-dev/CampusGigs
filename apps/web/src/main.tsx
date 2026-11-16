@@ -5,6 +5,7 @@ import './styles.css';
 import './phase-e.css';
 import './phase-f.css';
 import './phase-g.css';
+import './phase-h.css';
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode><App /></React.StrictMode>,

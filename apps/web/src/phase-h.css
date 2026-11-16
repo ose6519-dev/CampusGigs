@@ -1,0 +1,33 @@
+/* Phase H: compact community rows and searchable campus academic details. */
+.people-page .discover-heading{margin-bottom:12px}
+.people-page .discover-heading p{font-size:12px;max-width:36ch}
+.people-page .people-search-panel{padding:15px;border-radius:19px;box-shadow:0 8px 26px #251a080a}
+.people-page .people-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+.folk-row{display:flex;align-items:center;min-width:0;gap:9px;padding:11px 13px;background:#fff;border:1px solid #ede6d9;border-radius:17px;box-shadow:0 3px 12px #150f0909;transition:border-color .14s,box-shadow .14s}
+.folk-row:hover{border-color:#e6c679;box-shadow:0 6px 18px #150f0914}
+.folk-profile{display:flex;align-items:center;gap:12px;flex:1;min-width:0;padding:0;border:0;background:none;text-align:left;color:#26221b;cursor:pointer}
+.folk-avatar{width:49px;height:49px;position:relative;display:grid;place-items:center;border-radius:15px;background:#efc85d;color:#33270b;font-size:20px;font-weight:900;flex:none}
+.folk-avatar img{height:100%;width:100%;border-radius:15px;object-fit:cover}
+.folk-online{position:absolute;right:-3px;bottom:-3px;width:12px;height:12px;border:2px solid #fff;border-radius:100%;background:#bdc0bf}
+.folk-online.is-online{background:#17aa64;box-shadow:0 0 0 1px #9de6bc}
+.folk-info{min-width:0;display:flex;flex-direction:column;gap:5px}
+.folk-info strong{font-size:12.5px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:900}
+.folk-info small{font-size:10.5px;font-weight:650;color:#81796b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.folk-verified{color:#bb8b12;font-size:12px;white-space:nowrap}
+.folk-follow{white-space:nowrap;padding:8px 12px;border-radius:11px;background:#171612;border:1px solid #171612;color:#fff;font-size:11px;font-weight:900;cursor:pointer;min-width:78px;flex:none}
+.folk-follow:hover{background:#b88105;border-color:#b88105;color:#1e1b12}
+.folk-follow.is-following{background:#fff7db;border-color:#d8c385;color:#765714}
+.folk-follow:disabled{opacity:.6;cursor:progress}
+.academic-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;width:100%;min-width:0}
+.academic-fields .academic-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;grid-column:1/-1;font-size:12px}
+.academic-heading strong{font-size:12px;font-weight:900;color:#362d20}
+.academic-heading small,.academic-note{font-size:10px;color:#897e6b;font-weight:600}
+.academic-fields label{display:flex;flex-direction:column;gap:7px;font-size:11px;font-weight:850;min-width:0;color:#443a2a}
+.academic-fields input{width:100%;min-width:0;min-height:44px;border-radius:12px;padding:0 12px;border:1px solid #e1d8c6;background:#fff;color:#201b17;font:650 12px Manrope,sans-serif;outline:none}
+.academic-fields input:focus{border-color:#b9912f;box-shadow:0 0 0 3px #dbb85b29}
+.academic-fields .academic-note{grid-column:1/-1}
+.first-run .academic-fields{padding:12px;background:#fffaf1;border:1px solid #ede5d4;border-radius:15px}
+.location-settings-card .academic-fields{padding-top:8px}
+@media(max-width:760px){.people-page .people-grid{grid-template-columns:1fr;gap:9px}.people-page .people-search-panel{padding:13px}.folk-row{padding:9px 11px;min-height:69px;border-radius:15px}.folk-avatar{width:46px;height:46px;border-radius:13px}.folk-info strong{font-size:12px}.folk-info small{font-size:10px}.folk-follow{padding:8px 10px;min-width:72px;font-size:10px}}
+@media(max-width:380px){.academic-fields{grid-template-columns:1fr}.folk-avatar{width:40px;height:40px}.folk-profile{gap:8px}.folk-follow{min-width:68px;padding:7px 8px}}
+@media(prefers-reduced-motion:reduce){.folk-row{transition:none}}

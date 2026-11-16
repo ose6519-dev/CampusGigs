@@ -7,6 +7,7 @@ import { bookings, adminBookings } from './bookings';
 import { parseOnboarding } from './onboardingValidation';
 import { findInstitution, institutionIdPattern, nigeriaStates } from './institutions.ts';
 import { notifications } from './notifications.ts';
+import { parseAcademics } from './academicValidation.ts';
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
@@ -81,7 +82,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   const requestUrl = new URL(request.url);
   const path = requestUrl.pathname;
   if (path === '/health' && request.method === 'GET') {
-    return json({ service: 'campusgigs-api', status: 'ok', phase: 'G', bookingsEnabled: true, paymentsEnabled: false });
+    return json({ service: 'campusgigs-api', status: 'ok', phase: 'H', bookingsEnabled: true, paymentsEnabled: false });
   }
   if (!path.startsWith('/v1/')) return json({ error: 'Not found' }, 404);
   if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
@@ -183,10 +184,10 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (institution && institution.state_name!==value.state) return json({error:'That school is not in the selected state'},400);
     await env.DB.prepare(`
       UPDATE profiles SET onboarding_completed=1,user_kind=?,age_range=?,student_status=?,interests_json=?,
-        display_name=?,campus=?,city=?,state_name=?,institution_id=?,active_mode=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        display_name=?,campus=?,city=?,state_name=?,institution_id=?,faculty=?,department=?,active_mode=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
       WHERE firebase_uid=? AND account_status='active'
     `).bind(value.userKind,value.ageRange,value.studentStatus,JSON.stringify(value.interests),value.displayName,
-      institution?.name||'',value.city,value.state,institution?.id||null,
+      institution?.name||'',value.city,value.state,institution?.id||null,value.faculty,value.department,
       value.userKind==='provider'?'providing':'buying',user.uid).run();
     return json({completed:true});
   }
@@ -197,15 +198,17 @@ async function route(request: Request, env: Env): Promise<Response> {
     const body=await readBody(request);
     if(!body||typeof body!=='object'||Array.isArray(body)) throw new InputError('Select a location');
     const value=body as Record<string,unknown>;
-    if(Object.keys(value).some(k=>!['state','institutionId'].includes(k))) throw new InputError('Unknown location field');
+    if(Object.keys(value).some(k=>!['state','institutionId','faculty','department'].includes(k))) throw new InputError('Unknown location field');
     if(typeof value.state!=='string'||!nigeriaStates.includes(value.state as typeof nigeriaStates[number])) throw new InputError('Choose your state');
     const id=value.institutionId||'';
     if(typeof id!=='string'||(id&&!institutionIdPattern.test(id))) throw new InputError('Select a recognised institution');
     const institution=id?await findInstitution(env,id):null;
     if(institution&&institution.state_name!==value.state) throw new InputError('Institution does not belong to that state');
-    await env.DB.prepare(`UPDATE profiles SET state_name=?,institution_id=?,campus=?,
+    const academics=parseAcademics(value.faculty??profile.faculty??'',value.department??profile.department??'');
+    if (!institution && (academics.faculty || academics.department)) throw new InputError('Select your institution before adding academic details');
+    await env.DB.prepare(`UPDATE profiles SET state_name=?,institution_id=?,campus=?,faculty=?,department=?,
       updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE firebase_uid=?`)
-      .bind(value.state,institution?.id||null,institution?.name||'',user.uid).run();
+      .bind(value.state,institution?.id||null,institution?.name||'',academics.faculty,academics.department,user.uid).run();
     return json({saved:true,state:value.state,institution:institution?.name||''});
   }
 

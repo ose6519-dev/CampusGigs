@@ -147,7 +147,7 @@ export function BrowseGigs({ initialCategory, onOpen, onPeople, profileScope }: 
       <label className="discovery-location"><span aria-hidden="true">◎</span><input value={locationText} onChange={(event) => setLocationText(event.target.value)} placeholder="City / neighbourhood (optional)" maxLength={100} aria-label="Search city or neighbourhood" /></label>
       <button type="submit" className="button button-dark">Search <span>↗</span></button>
     </form>
-    <div className="discover-community-link"><span>Interested in a provider, not just a gig?</span><button type="button" onClick={onPeople}>Explore verified profiles ↗</button></div>
+    <div className="discover-community-link"><span>Meet trusted service providers.</span><button type="button" onClick={onPeople}>Find folks ↗</button></div>
     <div className="discover-chips" aria-label="Filter gigs by skill category"><button className={!filters.category ? 'chosen' : ''} onClick={() => setFilter('category', '')}>All skills</button>{gigCategories.map((name) => <button className={filters.category === name ? 'chosen' : ''} key={name} onClick={() => setFilter('category', name)}>{name}</button>)}</div>
     <div className="discover-tools"><div className="discover-tools-heading"><strong>Explore gigs</strong><span>{loading ? 'Searching…' : `${gigs.length} ${gigs.length === 1 ? 'service' : 'services'} shown`}</span></div><div className="discover-selects">
       <label>Work type<select value={filters.locationType} onChange={(event) => setFilter('locationType', event.target.value)}><option value="">Any location</option><option value="online">Online</option><option value="in_person">In person</option><option value="both">Both options</option></select></label>

@@ -8,6 +8,8 @@ export type Profile = {
   bio: string;
   campus: string;
   city: string;
+  faculty: string;
+  department: string;
   state_name: string;
   institution_id: string | null;
   show_online: 0 | 1;

@@ -48,7 +48,7 @@ export function FollowingPanel({user,onOpen,onBrowse}:{user:User;onOpen:(id:stri
   const [rows,setRows]=useState<FollowingResponse['following']>([]);
   const [loading,setLoading]=useState(true);
   useEffect(()=>{let alive=true;void apiRequest<FollowingResponse>(user,'/v1/me/follows').then(result=>{if(alive)setRows(result.following);}).catch(()=>{}).finally(()=>{if(alive)setLoading(false);});return()=>{alive=false;};},[user]);
-  return <section className="section-wrap following-panel"><div className="section-heading"><div><span className="eyebrow">YOUR COMMUNITY</span><h2>Following.</h2></div><button className="text-link" onClick={onBrowse}>Find people ↗</button></div>
+  return <section className="section-wrap following-panel"><div className="section-heading"><div><span className="eyebrow">YOUR COMMUNITY</span><h2>Following.</h2></div><button className="text-link" onClick={onBrowse}>Find folks ↗</button></div>
     {loading?<p>Loading your providers…</p>:rows.length?<div className="following-grid">{rows.map(item=><button key={item.public_id} onClick={()=>onOpen(item.public_id)}><strong>{item.display_name}</strong><small>{item.campus||item.state_name}</small><span className={item.online?'status-online':'status-offline'}><i/>{item.online?'Online':'Offline'}</span></button>)}</div>:<p>Follow verified providers to keep their profiles close.</p>}
   </section>;
 }

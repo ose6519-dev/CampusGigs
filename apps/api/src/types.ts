@@ -8,6 +8,8 @@ export type ProfileRecord = {
   bio: string;
   campus: string;
   city: string;
+  faculty: string;
+  department: string;
   active_mode: Mode;
   onboarding_completed: 0 | 1;
   user_kind: 'buyer' | 'provider' | 'both';
