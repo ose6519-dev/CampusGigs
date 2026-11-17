@@ -7,6 +7,17 @@ import {RecentSearches,useSearchHistory,type SearchEntry} from './SearchHistory'
 
 export const gigCategories = serviceCategories;
 
+const likedGigCache=new Map<string,{at:number;ids:Promise<Set<string>>}>();
+function memberLikedGigs(user:User):Promise<Set<string>>{
+  const previous=likedGigCache.get(user.uid);
+  if(previous&&Date.now()-previous.at<120_000)return previous.ids;
+  const ids=apiRequest<{gigIds:string[]}>(user,'/v1/me/gigs/likes').then(data=>new Set(data.gigIds));
+  likedGigCache.set(user.uid,{at:Date.now(),ids});
+  void ids.catch(()=>{if(likedGigCache.get(user.uid)?.ids===ids)likedGigCache.delete(user.uid);});
+  return ids;
+}
+
+
 export const naira = (kobo: number) => `₦${new Intl.NumberFormat('en-NG', { maximumFractionDigits: 0 }).format(kobo / 100)}`;
 
 function serviceIcon(category: string) {
@@ -28,6 +39,13 @@ export function GigCard({ gig, onOpen, user, onLogin }: { gig: PublicGig; onOpen
   const link=new URL('/gigs/'+gig.id,window.location.origin).toString();
   const mediaUrl=gig.cover_image_id?gigImageUrl(gig.id,gig.cover_image_id):'';
   const hasVideo=Boolean(gig.cover_media_type?.startsWith('video/'));
+  useEffect(()=>{
+    if(!user){setLiked(false);return;}
+    let live=true;
+    void memberLikedGigs(user).then(ids=>{if(live)setLiked(ids.has(gig.id));}).catch(()=>{});
+    return()=>{live=false;};
+  },[user?.uid,gig.id]);
+
 
   async function share(){
     try{
@@ -43,6 +61,7 @@ export function GigCard({ gig, onOpen, user, onLogin }: { gig: PublicGig; onOpen
     try{
       const data=await apiRequest<{liked:boolean;likeCount:number}>(user,'/v1/me/gigs/'+gig.id+'/like',{method:next?'PUT':'DELETE'});
       setLiked(data.liked);setLikeCount(data.likeCount);
+      void memberLikedGigs(user).then(ids=>{if(data.liked)ids.add(gig.id);else ids.delete(gig.id);}).catch(()=>{});
     }catch(error){setLiked(!next);setLikeCount(n=>Math.max(0,n+(next?-1:1)));setFeedback((error as Error).message);}
     finally{setLikeBusy(false);}
   }
